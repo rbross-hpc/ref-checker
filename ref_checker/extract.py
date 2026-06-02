@@ -1,12 +1,14 @@
 """Extract structured references from PDF text via heuristic narrowing + LLM."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 _HEADING_RE = re.compile(
@@ -342,3 +344,61 @@ def extract_references(
     raise RuntimeError(
         f"Reference extraction failed after {max_retries} attempts"
     ) from last_exc
+
+
+_REFS_CACHE_SCHEMA_VERSION = 1
+
+
+def _pdf_sha256(pdf_path: Path) -> str:
+    h = hashlib.sha256()
+    with pdf_path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def write_refs_cache(
+    cache_path: Path,
+    pdf_path: Path,
+    refs: list[Reference],
+    extractor_meta: dict | None = None,
+) -> None:
+    """Write refs to cache_path in wrapper format, atomically."""
+    data = {
+        "schema_version": _REFS_CACHE_SCHEMA_VERSION,
+        "pdf": pdf_path.name,
+        "pdf_sha256": _pdf_sha256(pdf_path),
+        "extracted_at": datetime.now(timezone.utc).isoformat(),
+        "extractor": extractor_meta or {},
+        "references": [r.to_dict() for r in refs],
+    }
+    tmp = cache_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, cache_path)
+
+
+def load_refs_cache(
+    cache_path: Path,
+    pdf_path: Path,
+) -> tuple[list[Reference] | None, str]:
+    """Load refs from cache_path, validating schema version and PDF hash.
+
+    Returns (refs, reason) where reason is one of:
+      "valid", "missing", "corrupt", "schema_mismatch", "hash_mismatch"
+    refs is None on any reason other than "valid".
+    """
+    if not cache_path.exists():
+        return None, "missing"
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, "corrupt"
+    if not isinstance(data, dict) or data.get("schema_version") != _REFS_CACHE_SCHEMA_VERSION:
+        return None, "schema_mismatch"
+    if data.get("pdf_sha256") != _pdf_sha256(pdf_path):
+        return None, "hash_mismatch"
+    try:
+        refs = [Reference.from_dict(r) for r in data.get("references") or []]
+    except Exception:
+        return None, "corrupt"
+    return refs, "valid"

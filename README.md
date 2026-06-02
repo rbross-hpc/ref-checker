@@ -72,6 +72,9 @@ Options:
 
 ```
 --refs-json PATH          Load references from a previously extracted JSON file
+--refs-cache PATH         Refs cache file (default: <pdf-stem>.refs.json next to PDF)
+--no-refs-cache           Disable refs cache — always extract, never write
+--re-extract              Force re-extraction even if refs cache is valid
 --tail-pages N            Pages from end to use as fallback if no References
                           heading is found (default: 5)
 --min-match F             Minimum similarity to report as CLOSEST (default: 0.80)
@@ -84,29 +87,46 @@ Options:
 --delay-url S             Seconds between generic URL liveness checks (default: 1.0)
 --results-json PATH       Sidecar file path (default: <pdf-stem>.results.json)
 --no-results-json         Disable sidecar entirely
---resume                  Skip refs already resolved; retry only failures
---retry-all               Re-query every ref regardless of sidecar
+--no-resume               Disable resume — re-query every ref regardless of sidecar
+--retry-all               Re-query every ref even if sidecar marks it done
 --retry-closest           Also re-query refs previously reported as CLOSEST
 ```
+
+### Cached reference extraction
+
+Every `check` run automatically writes `<pdf-stem>.refs.json` next to the PDF
+after LLM extraction. On re-run, the cache is loaded instead of calling the LLM
+again — saving ~30–120 seconds per paper:
+
+```bash
+ref-checker check paper.pdf          # extracts + writes cache
+ref-checker check paper.pdf          # loads cache, skips LLM
+ref-checker check paper.pdf --re-extract   # forces re-extraction
+```
+
+The cache is validated against the PDF's SHA-256 hash. If the PDF changes, the
+cache is automatically invalidated and re-extracted. The `extract` subcommand
+writes the same format, so running `extract` first primes the cache for `check`.
 
 ### Resuming interrupted or incomplete runs
 
 Every `check` run writes a `<pdf-stem>.results.json` sidecar file next to the
-PDF. On re-run, pass `--resume` to skip references that already resolved cleanly
-and retry only those that failed (NO MATCH, exhausted sources, dead URLs):
+PDF. Resume is **on by default** — re-runs automatically skip references that
+already resolved cleanly and retry only those that failed (NO MATCH, exhausted
+sources, dead URLs):
 
 ```bash
-ref-checker check paper.pdf --resume
+ref-checker check paper.pdf          # first run: queries all, writes sidecar
+ref-checker check paper.pdf          # re-run: skips OK refs, retries failures
+ref-checker check paper.pdf --no-resume   # force re-query everything
 ```
 
 The sidecar is written atomically after each reference, so a Ctrl-C or network
-failure mid-run leaves the sidecar in a valid state. On the next `--resume` run,
-completed refs are replayed from the sidecar instantly and failed refs are
-re-queried.
+failure mid-run leaves the sidecar in a valid state. On re-run, completed refs
+are replayed from the sidecar instantly and failed refs are re-queried.
 
-If the reference list changes (e.g., you re-extract from a revised PDF), the
-sidecar detects the mismatch via a content hash and falls back to a full run
-with a warning.
+If the reference list changes (e.g., after `--re-extract`), the sidecar detects
+the mismatch via a content hash and falls back to a full re-run.
 
 ### Extract references only
 

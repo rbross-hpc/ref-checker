@@ -555,14 +555,15 @@ def check_references(
     total = len(refs)
     for i, ref in enumerate(refs, start=1):
         prior_entry = prior.get(ref.index)
+        prior_result = prior_entry.get("result") if prior_entry is not None else None
         use_cached = (
             not retry_all
-            and prior_entry is not None
-            and not _needs_retry(prior_entry, retry_closest)
+            and prior_result is not None
+            and not _needs_retry(prior_result, retry_closest)
         )
 
         if use_cached:
-            result = _result_from_dict(prior_entry["result"])
+            result = _result_from_dict(prior_result)
             cached_count += 1
             print(
                 f"[ref-checker] checking {i}/{total} (cached): {ref.title or ref.raw[:60]!r}",

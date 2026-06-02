@@ -50,14 +50,20 @@ def _build_check_parser(sub) -> None:
                    help="Seconds between GitHub liveness checks (default: 1.0)")
     p.add_argument("--delay-url", type=float, default=1.0, metavar="S",
                    help="Seconds between generic URL liveness checks (default: 1.0)")
+    p.add_argument("--refs-cache", default=None, metavar="PATH",
+                   help="Refs cache file (default: <pdf-stem>.refs.json next to PDF)")
+    p.add_argument("--no-refs-cache", action="store_true",
+                   help="Disable refs cache entirely — always extract, never write")
+    p.add_argument("--re-extract", action="store_true",
+                   help="Force re-extraction even if refs cache is valid")
     p.add_argument("--results-json", default=None, metavar="PATH",
                    help="Sidecar results file (default: <pdf-stem>.results.json next to PDF)")
     p.add_argument("--no-results-json", action="store_true",
                    help="Disable sidecar entirely — do not read or write results")
-    p.add_argument("--resume", action="store_true",
-                   help="Skip refs already resolved in sidecar; retry only failures")
+    p.add_argument("--no-resume", action="store_true",
+                   help="Disable resume — re-query every ref regardless of sidecar")
     p.add_argument("--retry-all", action="store_true",
-                   help="Re-query every ref even if sidecar marks it done (implies --resume ignored for skipping)")
+                   help="Re-query every ref even if sidecar marks it done")
     p.add_argument("--retry-closest", action="store_true",
                    help="Also re-query refs previously reported as CLOSEST")
 
@@ -165,7 +171,35 @@ def run_check(args) -> None:
         source_name = refs_path.stem
         default_sidecar = refs_path.parent / f"{refs_path.stem}.results.json"
     else:
-        refs = _load_pdf_and_extract(pdf_path, args.tail_pages)
+        refs_cache_path = (
+            Path(args.refs_cache).resolve() if args.refs_cache
+            else pdf_path.parent / f"{pdf_path.stem}.refs.json"
+        )
+        refs = None
+        if not args.no_refs_cache and not args.re_extract:
+            cached_refs, reason = extract.load_refs_cache(refs_cache_path, pdf_path)
+            if reason == "valid":
+                refs = cached_refs
+                print(
+                    f"[ref-checker] Refs cache: loaded {len(refs)} reference(s) from {refs_cache_path}",
+                    file=sys.stderr,
+                )
+            elif reason != "missing":
+                print(
+                    f"[ref-checker] Refs cache: {reason.replace('_', ' ')} — re-extracting",
+                    file=sys.stderr,
+                )
+            else:
+                print("[ref-checker] Refs cache: not found — extracting from PDF", file=sys.stderr)
+        if refs is None:
+            refs = _load_pdf_and_extract(pdf_path, args.tail_pages)
+            if refs and not args.no_refs_cache:
+                extractor_meta = {
+                    "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                    "tail_pages": args.tail_pages,
+                }
+                extract.write_refs_cache(refs_cache_path, pdf_path, refs, extractor_meta)
+                print(f"[ref-checker] Refs cache: written to {refs_cache_path}", file=sys.stderr)
         source_name = pdf_path.name
         default_sidecar = pdf_path.parent / f"{pdf_path.stem}.results.json"
 
@@ -180,10 +214,17 @@ def run_check(args) -> None:
     else:
         sidecar = default_sidecar
 
+    resume = not args.no_resume
+
     if sidecar is not None:
         print(f"[ref-checker] Sidecar: {sidecar}", file=sys.stderr)
-        if args.resume and sidecar.exists():
+        if resume and sidecar.exists():
             print("[ref-checker] Resuming from sidecar...", file=sys.stderr)
+        elif resume and not sidecar.exists():
+            print(
+                "[ref-checker] No sidecar found — results will be saved for future --resume runs.",
+                file=sys.stderr,
+            )
 
     print(f"[ref-checker] Checking {len(refs)} reference(s)...\n", file=sys.stderr)
     check.check_references(
@@ -191,7 +232,7 @@ def run_check(args) -> None:
         delays=delays,
         min_match=args.min_match,
         sidecar=sidecar,
-        resume=args.resume,
+        resume=resume,
         retry_all=args.retry_all,
         retry_closest=args.retry_closest,
         pdf_name=source_name,
@@ -224,10 +265,11 @@ def run_extract(args) -> None:
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
     print(f"[ref-checker] Written: {md_path}", file=sys.stderr)
 
-    json_path.write_text(
-        json.dumps([r.to_dict() for r in refs], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    extractor_meta = {
+        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "tail_pages": args.tail_pages,
+    }
+    extract.write_refs_cache(json_path, pdf_path, refs, extractor_meta)
     print(f"[ref-checker] Written: {json_path}", file=sys.stderr)
 
 

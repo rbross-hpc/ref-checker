@@ -296,6 +296,9 @@ Full pipeline: extract references then check each one.
 
 ```
 --refs-json PATH          Load pre-extracted references (skip LLM extraction)
+--refs-cache PATH         Refs cache file (default: <pdf-stem>.refs.json next to PDF)
+--no-refs-cache           Disable refs cache entirely
+--re-extract              Force re-extraction even if refs cache is valid
 --tail-pages N            Tail-page fallback page count (default: 5)
 --min-match F             CLOSEST threshold (default: 0.80)
 --delay-openalex S        Per-call delay in seconds (default: 2.0)
@@ -311,6 +314,28 @@ Full pipeline: extract references then check each one.
 --retry-all               Re-query every ref regardless of sidecar
 --retry-closest           Also re-query CLOSEST refs on resume
 ```
+
+### Per-paper refs cache
+
+Every `check` run (and `extract`) writes `<pdf-stem>.refs.json` next to the PDF
+in the following wrapper format:
+
+```json
+{
+  "schema_version": 1,
+  "pdf": "paper.pdf",
+  "pdf_sha256": "<hex>",
+  "extracted_at": "<ISO-8601>",
+  "extractor": { "model": "GPT-5.4", "tail_pages": 5 },
+  "references": [ { "index": 1, "raw": "...", ... } ]
+}
+```
+
+On subsequent `check` runs the cache is loaded if the file exists and its
+`pdf_sha256` matches the current PDF content. Any mismatch (schema version,
+hash, corrupt JSON, missing file) triggers a fresh LLM extraction and overwrites
+the file. There is no legacy bare-list support — older `refs.json` files are
+treated as schema mismatches and silently replaced.
 
 ### Per-paper resume sidecar
 
