@@ -1,0 +1,28 @@
+[build-system]
+requires      = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "ref-checker"
+version         = "0.1.0"
+description     = "Check paper references against OpenAlex, CrossRef, Semantic Scholar, and arXiv"
+readme          = "README.md"
+requires-python = ">=3.10"
+license         = { text = "BSD-3-Clause" }
+authors         = [{ name = "Robert Ross", email = "rross@anl.gov" }]
+dependencies = [
+    "requests>=2.31",
+    "pypdf>=4.0",
+    "pdfplumber>=0.10",
+    "openai>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+ref-checker = "ref_checker.cli.main:main"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["ref_checker*"]

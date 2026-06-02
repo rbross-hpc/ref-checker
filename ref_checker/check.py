@@ -1,0 +1,395 @@
+"""Multi-source reference lookup driver and output formatter."""
+from __future__ import annotations
+
+import os
+import sys
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+_USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
+_GREEN  = "\033[32m" if _USE_COLOR else ""
+_RED    = "\033[31m" if _USE_COLOR else ""
+_ORANGE = "\033[33m" if _USE_COLOR else ""
+_RESET  = "\033[0m"  if _USE_COLOR else ""
+
+from .extract import Reference
+from .similarity import title_ratio
+from .sources import arxiv, crossref, github, openalex, semanticscholar, url as url_source
+
+_SCHOLARLY_SOURCES = [openalex, crossref, semanticscholar, arxiv]
+
+_DEFAULT_DELAYS: dict[str, float] = {
+    "openalex": 2.0,
+    "crossref": 2.0,
+    "semanticscholar": 5.0,
+    "arxiv": 3.0,
+    "github": 1.0,
+    "url": 1.0,
+}
+
+_RETRY_BACKOFF = (5.0, 10.0, 15.0)
+_YEAR_MISMATCH_PENALTY = 0.10
+
+
+@dataclass
+class LookupResult:
+    best_summary: dict | None = None
+    best_similarity: float = 0.0
+    best_source: str | None = None
+    doi_attempted: str | None = None
+    doi_found_in: list[str] = field(default_factory=list)
+    arxiv_attempted: str | None = None
+    arxiv_found_in: list[str] = field(default_factory=list)
+    year_mismatch_note: str | None = None
+    id_title_similarity: float | None = None
+    id_notes: list[str] = field(default_factory=list)
+    url_liveness_check: bool = False
+    dead_urls: list[tuple[str, str]] = field(default_factory=list)
+    exhausted_sources: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Stats:
+    queries: dict[str, int] = field(default_factory=dict)
+    retries: dict[str, int] = field(default_factory=dict)
+    exhausted: dict[str, int] = field(default_factory=dict)
+
+    def record_query(self, source: str) -> None:
+        self.queries[source] = self.queries.get(source, 0) + 1
+
+    def record_retry(self, source: str) -> None:
+        self.retries[source] = self.retries.get(source, 0) + 1
+
+    def record_exhausted(self, source: str) -> None:
+        self.exhausted[source] = self.exhausted.get(source, 0) + 1
+
+    def print_summary(self) -> None:
+        all_sources = sorted(set(list(self.queries) + list(self.retries) + list(self.exhausted)))
+        if not all_sources:
+            return
+        print("[ref-checker] Query summary:", file=sys.stderr)
+        for src in all_sources:
+            q = self.queries.get(src, 0)
+            r = self.retries.get(src, 0)
+            e = self.exhausted.get(src, 0)
+            retry_str = f", {r} retr{'y' if r == 1 else 'ies'}" if r else ""
+            exhausted_str = f", {e} exhausted" if e else ""
+            print(f"[ref-checker]   {src:20s} {q:3d} quer{'y' if q == 1 else 'ies'}{retry_str}{exhausted_str}", file=sys.stderr)
+
+
+def _retry(
+    fn,
+    tries: int = 3,
+    stats: _Stats | None = None,
+    source: str = "",
+    on_exhausted: "Callable[[], None] | None" = None,
+) -> tuple[dict | None, float | None]:
+    last_exc: Exception | None = None
+    for attempt in range(tries):
+        try:
+            return fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < tries - 1:
+                wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+                if stats and source:
+                    stats.record_retry(source)
+                time.sleep(wait)
+    if stats and source:
+        stats.record_exhausted(source)
+    if on_exhausted:
+        on_exhausted()
+    print(
+        f"[ref-checker] WARNING: all {tries} retries exhausted for {source}"
+        + (f": {last_exc}" if last_exc else ""),
+        file=sys.stderr,
+    )
+    return None, None
+
+
+class _RateLimiter:
+    def __init__(self, delays: dict[str, float]) -> None:
+        self._delays = delays
+        self._last: dict[str, float] = {}
+
+    def wait(self, source_name: str) -> None:
+        delay = self._delays.get(source_name, 1.0)
+        last = self._last.get(source_name)
+        if last is not None:
+            elapsed = time.monotonic() - last
+            remaining = delay - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+
+    def mark(self, source_name: str) -> None:
+        self._last[source_name] = time.monotonic()
+
+
+def _consider(
+    ref: Reference,
+    result: LookupResult,
+    summary: dict | None,
+    sim: float | None,
+    source_name: str,
+) -> None:
+    if summary is None or sim is None:
+        return
+
+    ref_year = ref.year
+    cand_year = summary.get("year")
+    year_note: str | None = None
+
+    if ref_year and cand_year and ref_year != cand_year:
+        sim = max(0.0, sim - _YEAR_MISMATCH_PENALTY)
+        year_note = f"ref year={ref_year}, match year={cand_year}"
+
+    if sim > result.best_similarity:
+        result.best_similarity = sim
+        result.best_summary = summary
+        result.best_source = source_name
+        result.year_mismatch_note = year_note
+
+
+def _consider_id_hit(
+    ref: Reference,
+    result: LookupResult,
+    summary: dict,
+    source_name: str,
+) -> None:
+    """Record an identifier-based (DOI/arXiv) hit at similarity 1.0.
+
+    Computes title and year agreement as informational notes but does not
+    demote the similarity — the identifier itself is the proof of identity.
+    """
+    result.best_similarity = 1.0
+    result.best_summary = summary
+    result.best_source = source_name
+    result.year_mismatch_note = None
+    result.id_notes = []
+
+    cand_title = summary.get("title")
+    t_sim = title_ratio(ref.title, cand_title)
+    result.id_title_similarity = t_sim
+    if ref.title and cand_title and t_sim < 0.85:
+        result.id_notes.append(
+            f"title similarity {t_sim:.2f} — DOI title: \"{cand_title}\""
+        )
+
+    ref_year = ref.year
+    cand_year = summary.get("year")
+    if ref_year and cand_year and ref_year != cand_year:
+        result.id_notes.append(f"year mismatch (ref year={ref_year}, match year={cand_year})")
+
+
+def lookup_reference(
+    ref: Reference,
+    delays: dict[str, float] | None = None,
+    min_match: float = 0.80,
+    stats: _Stats | None = None,
+) -> LookupResult:
+    """Run multi-source lookup for a single reference."""
+    rl = _RateLimiter(delays or _DEFAULT_DELAYS)
+    result = LookupResult(
+        doi_attempted=ref.doi,
+        arxiv_attempted=ref.arxiv_id,
+    )
+
+    def call(src, fn_name: str, *args):
+        fn = getattr(src, fn_name, None)
+        if fn is None:
+            return None, None
+        rl.wait(src.SOURCE_NAME)
+        if stats:
+            stats.record_query(src.SOURCE_NAME)
+        out = _retry(
+            lambda: fn(*args),
+            stats=stats,
+            source=src.SOURCE_NAME,
+            on_exhausted=lambda: result.exhausted_sources.append(src.SOURCE_NAME),
+        )
+        rl.mark(src.SOURCE_NAME)
+        return out
+
+    def call_liveness(src, urls: str):
+        fn = src.check_url
+        rl.wait(src.SOURCE_NAME)
+        if stats:
+            stats.record_query(src.SOURCE_NAME)
+        try:
+            out = _retry(
+                lambda: fn(urls),
+                stats=stats,
+                source=src.SOURCE_NAME,
+                on_exhausted=lambda: result.exhausted_sources.append(src.SOURCE_NAME),
+            )
+        except Exception:
+            out = (None, None, [])
+        rl.mark(src.SOURCE_NAME)
+        summary, sim, dead = out if len(out) == 3 else (*out, [])
+        result.dead_urls.extend(dead)
+        return summary, sim
+
+    # --- GitHub first (if the ref has a GitHub URL) ---
+    if ref.github_url:
+        summary, sim = call_liveness(github, ref.github_url)
+        if summary:
+            _consider_id_hit(ref, result, summary, github.SOURCE_NAME)
+            return result
+
+    # --- arXiv first (if the ref has an arXiv ID) ---
+    if ref.arxiv_id and result.best_similarity < 1.0:
+        summary, sim = call(arxiv, "get_by_arxiv_id", ref.arxiv_id)
+        if summary:
+            result.arxiv_found_in.append(arxiv.SOURCE_NAME)
+            _consider_id_hit(ref, result, summary, arxiv.SOURCE_NAME)
+            return result
+
+    # --- Scholarly sources loop (OA → CR → SS → arXiv) ---
+    # Skip entirely when the reference is clearly a non-paper resource:
+    # no DOI, no arXiv ID, no venue, and has a URL.
+    url_only = (
+        not ref.doi
+        and not ref.arxiv_id
+        and not ref.venue
+        and (ref.url or ref.github_url)
+    )
+
+    for src in (_SCHOLARLY_SOURCES if not url_only else []):
+        if result.best_similarity >= 1.0:
+            break
+
+        if ref.doi:
+            summary, sim = call(src, "get_by_doi", ref.doi)
+            if summary:
+                result.doi_found_in.append(src.SOURCE_NAME)
+                _consider_id_hit(ref, result, summary, src.SOURCE_NAME)
+
+        if result.best_similarity < 1.0 and ref.arxiv_id and src.SOURCE_NAME != arxiv.SOURCE_NAME:
+            summary, sim = call(src, "get_by_arxiv_id", ref.arxiv_id)
+            if summary:
+                if src.SOURCE_NAME not in result.arxiv_found_in:
+                    result.arxiv_found_in.append(src.SOURCE_NAME)
+                _consider_id_hit(ref, result, summary, src.SOURCE_NAME)
+
+        if result.best_similarity < 0.90 and ref.title:
+            summary, sim = call(src, "search_by_title", ref.title)
+            _consider(ref, result, summary, sim, src.SOURCE_NAME)
+
+    # --- Generic URL liveness fallback (last resort, no scholarly match) ---
+    if result.best_similarity < min_match and ref.url and not ref.github_url:
+        summary, sim = call_liveness(url_source, ref.url)
+        if summary:
+            _consider_id_hit(ref, result, summary, url_source.SOURCE_NAME)
+            result.url_liveness_check = True
+
+    return result
+
+
+def _format_citation(
+    authors: list[str],
+    title: str | None,
+    year: int | None,
+    venue: str | None,
+) -> str:
+    parts = []
+    if authors:
+        first = authors[0]
+        last = first.split()[-1] if first else first
+        suffix = " et al." if len(authors) > 1 else ""
+        parts.append(f"{last}{suffix}")
+    if title:
+        parts.append(f'"{title}"')
+    if year:
+        parts.append(str(year))
+    if venue:
+        parts.append(f"({venue})")
+    return ", ".join(parts)
+
+
+def _format_ref_header(ref: Reference) -> str:
+    citation = _format_citation(ref.authors, ref.title, ref.year, ref.venue)
+    return f"[{ref.index}] {citation}" if citation else f"[{ref.index}] {ref.raw}"
+
+
+def _format_result(ref: Reference, result: LookupResult, min_match: float) -> str:
+    lines = [_format_ref_header(ref)]
+    s = result.best_summary
+    sim = result.best_similarity
+    src_tag = f"  [source: {result.best_source}]" if result.best_source else ""
+
+    if s and sim >= 1.0:
+        if s.get("doi"):
+            lines.append(f"    {_GREEN}OK{_RESET}  doi:{s['doi']}{src_tag}")
+        elif s.get("url"):
+            lines.append(f"    {_GREEN}OK{_RESET}  {s['url']}{src_tag}")
+        if result.url_liveness_check:
+            lines.append(f"    {_ORANGE}Note:{_RESET} URL liveness check only — no bibliographic record found")
+        for note in result.id_notes:
+            lines.append(f"    {_ORANGE}Note:{_RESET} {note}")
+
+    elif s and sim >= min_match:
+        lines.append(f"    {_ORANGE}CLOSEST{_RESET} (similarity {sim:.2f}){src_tag}")
+        lines.append(f"        Closest candidate across services:")
+        citation = _format_citation(
+            s.get("authors") or [],
+            s.get("title"),
+            s.get("year"),
+            s.get("venue"),
+        )
+        if citation:
+            lines.append(f"        {citation}")
+        if s.get("url"):
+            lines.append(f"        {s['url']}")
+
+    else:
+        src_tag_nm = f"  [source: {result.best_source}]" if result.best_source else ""
+        lines.append(f"    {_RED}NO MATCH{_RESET} (similarity {sim:.2f}){src_tag_nm}")
+        if s:
+            lines.append(f"        Closest candidate across services:")
+            citation = _format_citation(
+                s.get("authors") or [],
+                s.get("title"),
+                s.get("year"),
+                s.get("venue"),
+            )
+            if citation:
+                lines.append(f"        {citation}")
+            if s.get("url"):
+                lines.append(f"        {s['url']}")
+
+    if result.year_mismatch_note and s and sim >= min_match:
+        lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
+
+    if sim < 1.0:
+        if result.doi_attempted and not result.doi_found_in:
+            lines.append(f"    DOI not found in any source: {result.doi_attempted}")
+        if result.arxiv_attempted and not result.arxiv_found_in:
+            lines.append(f"    arXiv ID not found in any source: {result.arxiv_attempted}")
+        for dead_url, reason in result.dead_urls:
+            lines.append(f"    URL check failed ({reason}): {dead_url}")
+        if result.exhausted_sources:
+            srcs = ", ".join(sorted(set(result.exhausted_sources)))
+            lines.append(f"    {_ORANGE}Note:{_RESET} retries exhausted for {srcs} — results may be incomplete")
+
+    return "\n".join(lines)
+
+
+def check_references(
+    refs: list[Reference],
+    delays: dict[str, float] | None = None,
+    min_match: float = 0.80,
+) -> None:
+    """Look up every reference and print a human-readable summary to stdout."""
+    stats = _Stats()
+    total = len(refs)
+    for i, ref in enumerate(refs, start=1):
+        print(
+            f"[ref-checker] checking {i}/{total}: {ref.title or ref.raw[:60]!r}",
+            file=sys.stderr,
+        )
+        result = lookup_reference(ref, delays=delays, min_match=min_match, stats=stats)
+        print(_format_result(ref, result, min_match))
+        print()
+    print("[ref-checker]", file=sys.stderr)
+    stats.print_summary()
