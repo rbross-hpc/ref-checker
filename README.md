@@ -25,7 +25,7 @@ pipx upgrade ref-checker
 To install a specific tagged version or commit:
 
 ```bash
-pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.1.0
+pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.2.0
 ```
 
 ### Other install methods
@@ -34,8 +34,9 @@ pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.1.0
 # From a local clone (isolated)
 pipx install .
 
-# Development / editable
-pip install -e .
+# Development / editable (includes pytest)
+pip install -e ".[dev]"
+pytest tests/
 ```
 
 Python 3.10 or later required.

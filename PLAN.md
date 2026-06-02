@@ -19,14 +19,16 @@ ref-checker/
 ├── LICENSE                        # BSD 3-Clause, Argonne National Laboratory
 ├── README.md
 ├── PLAN.md                        # this file
-├── SAMPLE-PLAN.md                 # the original design plan passed to build
 └── ref_checker/
     ├── __init__.py
     ├── __main__.py                # python -m ref_checker entry point
     ├── pdf.py                     # PDF → text (pypdf → pdfplumber fallback)
-    ├── extract.py                 # heuristic narrowing + LLM extraction
+    ├── extract.py                 # heuristic narrowing + LLM extraction + refs cache
     ├── similarity.py              # Unicode-normalized title ratio
-    ├── check.py                   # driver: lookup, rate limiting, formatting
+    ├── results.py                 # LookupResult dataclass + _Stats
+    ├── format.py                  # output formatting (format_result, colors)
+    ├── sidecar.py                 # results sidecar I/O and resume policy
+    ├── check.py                   # driver: lookup, rate limiting, orchestration
     ├── cli/
     │   ├── __init__.py
     │   └── main.py                # argparse subcommand dispatcher
@@ -133,7 +135,7 @@ matches to be penalized.
 
 ---
 
-## Step 4 — Multi-source lookup (`ref_checker/check.py`)
+## Step 4 — Multi-source lookup (`ref_checker/check.py`, `results.py`, `format.py`, `sidecar.py`)
 
 ### Source priority
 
@@ -210,7 +212,7 @@ indicating the DOI may resolve to a differently-titled paper (retitled preprint,
 
 ---
 
-## Step 5 — Output formatting
+## Step 5 — Output formatting (`ref_checker/format.py`)
 
 Each reference block:
 
@@ -310,7 +312,7 @@ Full pipeline: extract references then check each one.
 --delay-url S             (default: 1.0)
 --results-json PATH       Sidecar file (default: <pdf-stem>.results.json next to PDF)
 --no-results-json         Disable sidecar entirely
---resume                  Skip resolved refs; retry only failures/exhausted
+--no-resume               Disable resume (default: resume is ON)
 --retry-all               Re-query every ref regardless of sidecar
 --retry-closest           Also re-query CLOSEST refs on resume
 ```
@@ -350,7 +352,7 @@ write via a `.tmp` rename). The sidecar contains:
   (serialized `Reference`) and `result` (serialized `LookupResult` including
   `status`, `display_score`, `best_source`, `exhausted_sources`, etc.).
 
-**Resume policy** (applied when `--resume` is set):
+**Resume policy** (on by default; disable with `--no-resume`):
 
 A ref is considered **done** (skipped) when all hold:
 - `status == "OK"`
@@ -380,13 +382,13 @@ Extract references only; write `<stem>.refs.md` and `<stem>.refs.json`.
 
 Query a single source and print JSON to stdout.
 
-Sources: `openalex`, `crossref`, `semanticscholar`, `arxiv`
+Sources: `openalex`, `crossref`, `dblp`, `semanticscholar`, `arxiv`
 
 ```
---doi DOI
---arxiv-id ID    (openalex, semanticscholar)
---id ID          (arxiv)
---title TITLE
+--doi DOI        (not available for dblp)
+--arxiv-id ID    (openalex, semanticscholar only)
+--id ID          (arxiv only)
+--title TITLE    (all sources)
 ```
 
 ---
@@ -422,12 +424,34 @@ as `<set>` in the credential summary at startup.
 - **Rate limiter scope**: the rate limiter is shared across all references within
   a single `check_references()` call, enforcing inter-request delays correctly
   across reference boundaries. It does not persist across separate CLI invocations.
-- **Caching**: API responses are not cached. Re-running on the same paper
-  repeats all API calls. An optional on-disk cache (keyed by query hash) would
-  make iteration much faster.
+- **API response caching**: individual API responses are not cached across runs.
+  Re-running on a different paper (or after `--no-resume`) repeats all source
+  queries. The refs cache and results sidecar mitigate this for iterative work
+  on the same paper, but do not share across papers.
 - **arXiv title search**: uses `ti:"<title>"` which requires a fairly exact
   match. A looser `all:` query would improve recall for titles with PDF
   extraction artifacts that survive the repair pass.
+
+---
+
+## Testing
+
+Run the test suite with:
+
+```bash
+pytest tests/
+```
+
+111 tests, no network calls, runs in < 1 s. Coverage:
+
+| File | What's tested |
+|---|---|
+| `test_similarity.py` | `title_ratio`: normalization, Unicode, ligatures, None/empty, symmetry |
+| `test_sidecar.py` | `refs_hash`, `status_label`, round-trip serialize/deserialize, `needs_retry` all cases, `load`/`write` with all failure modes |
+| `test_refs_cache.py` | `write_refs_cache`/`load_refs_cache`: valid, missing, corrupt, schema mismatch, hash mismatch, field round-trip |
+| `test_format.py` | `format_result` for every output tier (OK ID, OK ≥0.90, CLOSEST, NO MATCH, liveness); all Note line types; `_format_citation` edge cases |
+| `test_dblp.py` | `_normalize_authors` (list/dict/digit-suffix), `_normalize_doi`, `_summarize` (title, year, DOI, authors, venue, edge cases) |
+| `test_sources.py` | `_summarize` for openalex, crossref, semanticscholar; `_parse_entry` for arxiv |
 
 ---
 
