@@ -1,23 +1,16 @@
-"""Multi-source reference lookup driver and output formatter."""
+"""Multi-source reference lookup driver."""
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
-
-_USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
-_GREEN  = "\033[32m" if _USE_COLOR else ""
-_RED    = "\033[31m" if _USE_COLOR else ""
-_ORANGE = "\033[33m" if _USE_COLOR else ""
-_RESET  = "\033[0m"  if _USE_COLOR else ""
+from typing import Callable
 
 from .extract import Reference
+from .format import format_result
+from .results import LookupResult, _Stats
 from .similarity import title_ratio
+from . import sidecar as _sidecar
 from .sources import arxiv, crossref, dblp, github, openalex, semanticscholar, url as url_source
 
 _SCHOLARLY_SOURCES = [openalex, crossref, dblp, semanticscholar, arxiv]
@@ -36,61 +29,12 @@ _RETRY_BACKOFF = (5.0, 10.0, 15.0)
 _YEAR_MISMATCH_PENALTY = 0.10
 
 
-@dataclass
-class LookupResult:
-    best_summary: dict | None = None
-    display_score: float | None = None    # title_ratio for ID hits (no year penalty);
-                                          # title_ratio - year_penalty for title-search hits;
-                                          # None for liveness-only hits
-    best_source: str | None = None
-    id_confirmed: bool = False            # True when a DOI or arXiv ID lookup succeeded
-    is_liveness: bool = False             # True when result is GitHub/URL liveness only
-    doi_attempted: str | None = None
-    doi_found_in: list[str] = field(default_factory=list)
-    arxiv_attempted: str | None = None
-    arxiv_found_in: list[str] = field(default_factory=list)
-    year_mismatch_note: str | None = None
-    id_notes: list[str] = field(default_factory=list)
-    dead_urls: list[tuple[str, str]] = field(default_factory=list)
-    exhausted_sources: list[str] = field(default_factory=list)
-    url_liveness_check: bool = False
-
-
-@dataclass
-class _Stats:
-    queries: dict[str, int] = field(default_factory=dict)
-    retries: dict[str, int] = field(default_factory=dict)
-    exhausted: dict[str, int] = field(default_factory=dict)
-
-    def record_query(self, source: str) -> None:
-        self.queries[source] = self.queries.get(source, 0) + 1
-
-    def record_retry(self, source: str) -> None:
-        self.retries[source] = self.retries.get(source, 0) + 1
-
-    def record_exhausted(self, source: str) -> None:
-        self.exhausted[source] = self.exhausted.get(source, 0) + 1
-
-    def print_summary(self) -> None:
-        all_sources = sorted(set(list(self.queries) + list(self.retries) + list(self.exhausted)))
-        if not all_sources:
-            return
-        print("[ref-checker] Query summary:", file=sys.stderr)
-        for src in all_sources:
-            q = self.queries.get(src, 0)
-            r = self.retries.get(src, 0)
-            e = self.exhausted.get(src, 0)
-            retry_str = f", {r} retr{'y' if r == 1 else 'ies'}" if r else ""
-            exhausted_str = f", {e} exhausted" if e else ""
-            print(f"[ref-checker]   {src:20s} {q:3d} quer{'y' if q == 1 else 'ies'}{retry_str}{exhausted_str}", file=sys.stderr)
-
-
 def _retry(
     fn,
     tries: int = 3,
     stats: _Stats | None = None,
     source: str = "",
-    on_exhausted: "Callable[[], None] | None" = None,
+    on_exhausted: Callable[[], None] | None = None,
 ) -> tuple[dict | None, float | None]:
     last_exc: Exception | None = None
     for attempt in range(tries):
@@ -192,9 +136,7 @@ def _consider_id_hit(
             t_sim = title_ratio(ref.title, cand_title)
             result.display_score = t_sim
             if t_sim < 0.85:
-                result.id_notes.append(
-                    f"DOI title: \"{cand_title}\""
-                )
+                result.id_notes.append(f"DOI title: \"{cand_title}\"")
         else:
             result.display_score = None
 
@@ -312,219 +254,6 @@ def lookup_reference(
     return result
 
 
-def _format_citation(
-    authors: list[str],
-    title: str | None,
-    year: int | None,
-    venue: str | None,
-) -> str:
-    parts = []
-    if authors:
-        first = authors[0]
-        last = first.split()[-1] if first else first
-        suffix = " et al." if len(authors) > 1 else ""
-        parts.append(f"{last}{suffix}")
-    if title:
-        parts.append(f'"{title}"')
-    if year:
-        parts.append(str(year))
-    if venue:
-        parts.append(f"({venue})")
-    return ", ".join(parts)
-
-
-def _format_ref_header(ref: Reference) -> str:
-    citation = _format_citation(ref.authors, ref.title, ref.year, ref.venue)
-    return f"[{ref.index}] {citation}" if citation else f"[{ref.index}] {ref.raw}"
-
-
-def _format_result(ref: Reference, result: LookupResult, min_match: float) -> str:
-    lines = [_format_ref_header(ref)]
-    s = result.best_summary
-    score = result.display_score
-    src_tag = f"  [source: {result.best_source}]" if result.best_source else ""
-
-    score_str = f"({score:.2f})" if score is not None else "(----)"
-
-    # Identifier string: prefer doi:, fall back to url
-    def id_str(summary: dict) -> str:
-        if summary.get("doi"):
-            return f"doi:{summary['doi']}"
-        return summary.get("url") or ""
-
-    # Effective numeric score for tier decisions (liveness = 1.0 for threshold purposes)
-    effective = score if score is not None else 1.0
-
-    if s and (result.id_confirmed or result.is_liveness):
-        lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {id_str(s)}{src_tag}")
-        if result.url_liveness_check:
-            lines.append(f"    {_ORANGE}Note:{_RESET} URL liveness check only — no bibliographic record found")
-        for note in result.id_notes:
-            lines.append(f"    {_ORANGE}Note:{_RESET} {note}")
-
-    elif s and effective >= 0.90:
-        lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {id_str(s)}{src_tag}")
-        if result.year_mismatch_note:
-            lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
-
-    elif s and effective >= min_match:
-        lines.append(f"    {_ORANGE}CLOSEST{_RESET} {score_str}{src_tag}")
-        lines.append(f"        Closest candidate across services:")
-        citation = _format_citation(
-            s.get("authors") or [],
-            s.get("title"),
-            s.get("year"),
-            s.get("venue"),
-        )
-        if citation:
-            lines.append(f"        {citation}")
-        if s.get("url"):
-            lines.append(f"        {s['url']}")
-        if result.year_mismatch_note:
-            lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
-
-    else:
-        lines.append(f"    {_RED}NO MATCH{_RESET} {score_str}{src_tag}")
-        if s:
-            lines.append(f"        Closest candidate across services:")
-            citation = _format_citation(
-                s.get("authors") or [],
-                s.get("title"),
-                s.get("year"),
-                s.get("venue"),
-            )
-            if citation:
-                lines.append(f"        {citation}")
-            if s.get("url"):
-                lines.append(f"        {s['url']}")
-
-    if not result.id_confirmed and not result.is_liveness:
-        if result.doi_attempted and not result.doi_found_in:
-            lines.append(f"    DOI not found in any source: {result.doi_attempted}")
-        if result.arxiv_attempted and not result.arxiv_found_in:
-            lines.append(f"    arXiv ID not found in any source: {result.arxiv_attempted}")
-    for dead_url, reason in result.dead_urls:
-        lines.append(f"    URL check failed ({reason}): {dead_url}")
-    if result.exhausted_sources:
-        srcs = ", ".join(sorted(set(result.exhausted_sources)))
-        lines.append(f"    {_ORANGE}Note:{_RESET} retries exhausted for {srcs} — results may be incomplete")
-
-    return "\n".join(lines)
-
-
-_SIDECAR_SCHEMA_VERSION = 1
-
-
-def _refs_hash(refs: list[Reference]) -> str:
-    raw = "\n".join(str(r.index) + r.raw for r in sorted(refs, key=lambda r: r.index))
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def _status_label(result: LookupResult, min_match: float) -> str:
-    if result.is_liveness or result.id_confirmed:
-        return "OK"
-    score = result.display_score if result.display_score is not None else 0.0
-    if score >= 0.90:
-        return "OK"
-    if score >= min_match:
-        return "CLOSEST"
-    return "NO MATCH"
-
-
-def _result_to_dict(result: LookupResult, min_match: float) -> dict:
-    return {
-        "status": _status_label(result, min_match),
-        "display_score": result.display_score,
-        "best_source": result.best_source,
-        "id_confirmed": result.id_confirmed,
-        "is_liveness": result.is_liveness,
-        "best_summary": result.best_summary,
-        "doi_attempted": result.doi_attempted,
-        "doi_found_in": result.doi_found_in,
-        "arxiv_attempted": result.arxiv_attempted,
-        "arxiv_found_in": result.arxiv_found_in,
-        "year_mismatch_note": result.year_mismatch_note,
-        "id_notes": result.id_notes,
-        "dead_urls": [list(t) for t in result.dead_urls],
-        "exhausted_sources": result.exhausted_sources,
-        "url_liveness_check": result.url_liveness_check,
-    }
-
-
-def _result_from_dict(d: dict) -> LookupResult:
-    return LookupResult(
-        best_summary=d.get("best_summary"),
-        display_score=d.get("display_score"),
-        best_source=d.get("best_source"),
-        id_confirmed=d.get("id_confirmed", False),
-        is_liveness=d.get("is_liveness", False),
-        doi_attempted=d.get("doi_attempted"),
-        doi_found_in=d.get("doi_found_in") or [],
-        arxiv_attempted=d.get("arxiv_attempted"),
-        arxiv_found_in=d.get("arxiv_found_in") or [],
-        year_mismatch_note=d.get("year_mismatch_note"),
-        id_notes=d.get("id_notes") or [],
-        dead_urls=[tuple(t) for t in (d.get("dead_urls") or [])],
-        exhausted_sources=d.get("exhausted_sources") or [],
-        url_liveness_check=d.get("url_liveness_check", False),
-    )
-
-
-def _needs_retry(entry: dict, retry_closest: bool) -> bool:
-    status = entry.get("status", "NO MATCH")
-    if status not in ("OK", "CLOSEST", "NO MATCH"):
-        return True
-    if status == "NO MATCH":
-        return True
-    if status == "CLOSEST" and retry_closest:
-        return True
-    if entry.get("exhausted_sources"):
-        return True
-    if entry.get("dead_urls"):
-        return True
-    return False
-
-
-def _load_sidecar(path: Path, refs: list[Reference]) -> tuple[dict, bool]:
-    """Load sidecar JSON. Returns (entries_by_index, hash_ok)."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}, False
-    if data.get("schema_version") != _SIDECAR_SCHEMA_VERSION:
-        return {}, False
-    stored_hash = data.get("refs_hash")
-    current_hash = _refs_hash(refs)
-    hash_ok = stored_hash == current_hash
-    entries = {int(k): v for k, v in (data.get("references") or {}).items()}
-    return entries, hash_ok
-
-
-def _write_sidecar(
-    path: Path,
-    pdf_name: str,
-    refs: list[Reference],
-    all_results: dict[int, LookupResult],
-    min_match: float,
-) -> None:
-    data = {
-        "schema_version": _SIDECAR_SCHEMA_VERSION,
-        "pdf": pdf_name,
-        "refs_hash": _refs_hash(refs),
-        "references": {
-            str(ref.index): {
-                "ref": ref.to_dict(),
-                "result": _result_to_dict(all_results[ref.index], min_match),
-            }
-            for ref in refs
-            if ref.index in all_results
-        },
-    }
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-
-
 def check_references(
     refs: list[Reference],
     delays: dict[str, float] | None = None,
@@ -543,7 +272,7 @@ def check_references(
     cached_count = 0
 
     if sidecar is not None and resume and sidecar.exists():
-        prior, hash_ok = _load_sidecar(sidecar, refs)
+        prior, hash_ok = _sidecar.load(sidecar, refs)
         if not hash_ok:
             print(
                 "[ref-checker] WARNING: sidecar refs_hash mismatch — "
@@ -559,11 +288,11 @@ def check_references(
         use_cached = (
             not retry_all
             and prior_result is not None
-            and not _needs_retry(prior_result, retry_closest)
+            and not _sidecar.needs_retry(prior_result, retry_closest)
         )
 
         if use_cached:
-            result = _result_from_dict(prior_result)
+            result = _sidecar.result_from_dict(prior_result)
             cached_count += 1
             print(
                 f"[ref-checker] checking {i}/{total} (cached): {ref.title or ref.raw[:60]!r}",
@@ -579,11 +308,11 @@ def check_references(
             )
 
         all_results[ref.index] = result
-        print(_format_result(ref, result, min_match))
+        print(format_result(ref, result, min_match))
         print()
 
         if sidecar is not None:
-            _write_sidecar(sidecar, pdf_name, refs, all_results, min_match)
+            _sidecar.write(sidecar, pdf_name, refs, all_results, min_match)
 
     print("[ref-checker]", file=sys.stderr)
     if cached_count:
