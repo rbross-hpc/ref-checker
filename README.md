@@ -10,8 +10,28 @@ For a detailed description of the design and implementation, see [PLAN.md](PLAN.
 
 ## Install
 
+The easiest way to install `ref-checker` as a CLI tool is directly from GitHub using [pipx](https://pipx.pypa.io/):
+
 ```bash
-# Recommended: isolated CLI install
+pipx install git+https://github.com/rbross-hpc/ref-checker.git
+```
+
+This installs `ref-checker` into its own isolated virtual environment and puts the command on your `PATH`. To upgrade later:
+
+```bash
+pipx upgrade ref-checker
+```
+
+To install a specific tagged version or commit:
+
+```bash
+pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.1.0
+```
+
+### Other install methods
+
+```bash
+# From a local clone (isolated)
 pipx install .
 
 # Development / editable
