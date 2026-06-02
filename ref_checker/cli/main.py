@@ -7,13 +7,13 @@ import os
 import sys
 
 from .. import check, extract, pdf
-from ..sources import arxiv, crossref, openalex, semanticscholar
+from ..sources import arxiv, crossref, dblp, openalex, semanticscholar
 
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ref-checker",
-        description="Check paper references against OpenAlex, CrossRef, Semantic Scholar, and arXiv.",
+        description="Check paper references against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv.",
     )
     sub = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
@@ -40,8 +40,10 @@ def _build_check_parser(sub) -> None:
                    help="Seconds between OpenAlex calls (default: 2.0)")
     p.add_argument("--delay-crossref", type=float, default=2.0, metavar="S",
                    help="Seconds between CrossRef calls (default: 2.0)")
-    p.add_argument("--delay-semanticscholar", type=float, default=5.0, metavar="S",
-                   help="Seconds between Semantic Scholar calls (default: 5.0)")
+    p.add_argument("--delay-dblp", type=float, default=1.0, metavar="S",
+                   help="Seconds between DBLP calls (default: 1.0)")
+    p.add_argument("--delay-semanticscholar", type=float, default=8.0, metavar="S",
+                   help="Seconds between Semantic Scholar calls (default: 8.0)")
     p.add_argument("--delay-arxiv", type=float, default=3.0, metavar="S",
                    help="Seconds between arXiv calls (default: 3.0)")
     p.add_argument("--delay-github", type=float, default=1.0, metavar="S",
@@ -69,11 +71,12 @@ def _build_lookup_parser(sub) -> None:
     )
     lsub = p.add_subparsers(dest="source", required=True, metavar="SOURCE")
 
-    for name in ("openalex", "crossref", "semanticscholar", "arxiv"):
+    for name in ("openalex", "crossref", "dblp", "semanticscholar", "arxiv"):
         sp = lsub.add_parser(name, help=f"Query {name}.")
         group = sp.add_mutually_exclusive_group(required=True)
-        group.add_argument("--doi", help="DOI to look up")
-        if name != "crossref":
+        if name != "dblp":
+            group.add_argument("--doi", help="DOI to look up")
+        if name not in ("crossref", "dblp"):
             id_flag = "--id" if name == "arxiv" else "--arxiv-id"
             id_dest = "arxiv_id"
             id_help = "arXiv ID" if name == "arxiv" else "arXiv ID to look up"
@@ -134,6 +137,7 @@ def run_check(args) -> None:
     delays = {
         "openalex":        args.delay_openalex,
         "crossref":        args.delay_crossref,
+        "dblp":            args.delay_dblp,
         "semanticscholar": args.delay_semanticscholar,
         "arxiv":           args.delay_arxiv,
         "github":          args.delay_github,
@@ -209,6 +213,9 @@ def run_lookup(args) -> None:
             summary, sim = crossref.get_by_doi(args.doi)
         else:
             summary, sim = crossref.search_by_title(args.title)
+
+    elif source == "dblp":
+        summary, sim = dblp.search_by_title(args.title)
 
     elif source == "semanticscholar":
         if args.doi:

@@ -15,14 +15,15 @@ _RESET  = "\033[0m"  if _USE_COLOR else ""
 
 from .extract import Reference
 from .similarity import title_ratio
-from .sources import arxiv, crossref, github, openalex, semanticscholar, url as url_source
+from .sources import arxiv, crossref, dblp, github, openalex, semanticscholar, url as url_source
 
-_SCHOLARLY_SOURCES = [openalex, crossref, semanticscholar, arxiv]
+_SCHOLARLY_SOURCES = [openalex, crossref, dblp, semanticscholar, arxiv]
 
 _DEFAULT_DELAYS: dict[str, float] = {
     "openalex": 2.0,
     "crossref": 2.0,
-    "semanticscholar": 5.0,
+    "dblp": 1.0,
+    "semanticscholar": 8.0,
     "arxiv": 3.0,
     "github": 1.0,
     "url": 1.0,
@@ -35,18 +36,21 @@ _YEAR_MISMATCH_PENALTY = 0.10
 @dataclass
 class LookupResult:
     best_summary: dict | None = None
-    best_similarity: float = 0.0
+    display_score: float | None = None    # title_ratio for ID hits (no year penalty);
+                                          # title_ratio - year_penalty for title-search hits;
+                                          # None for liveness-only hits
     best_source: str | None = None
+    id_confirmed: bool = False            # True when a DOI or arXiv ID lookup succeeded
+    is_liveness: bool = False             # True when result is GitHub/URL liveness only
     doi_attempted: str | None = None
     doi_found_in: list[str] = field(default_factory=list)
     arxiv_attempted: str | None = None
     arxiv_found_in: list[str] = field(default_factory=list)
     year_mismatch_note: str | None = None
-    id_title_similarity: float | None = None
     id_notes: list[str] = field(default_factory=list)
-    url_liveness_check: bool = False
     dead_urls: list[tuple[str, str]] = field(default_factory=list)
     exhausted_sources: list[str] = field(default_factory=list)
+    url_liveness_check: bool = False
 
 
 @dataclass
@@ -133,6 +137,7 @@ def _consider(
     sim: float | None,
     source_name: str,
 ) -> None:
+    """Record a title-search hit. Applies year penalty to the display score."""
     if summary is None or sim is None:
         return
 
@@ -144,8 +149,9 @@ def _consider(
         sim = max(0.0, sim - _YEAR_MISMATCH_PENALTY)
         year_note = f"ref year={ref_year}, match year={cand_year}"
 
-    if sim > result.best_similarity:
-        result.best_similarity = sim
+    current = result.display_score if result.display_score is not None else 0.0
+    if sim > current:
+        result.display_score = sim
         result.best_summary = summary
         result.best_source = source_name
         result.year_mismatch_note = year_note
@@ -157,29 +163,43 @@ def _consider_id_hit(
     summary: dict,
     source_name: str,
 ) -> None:
-    """Record an identifier-based (DOI/arXiv) hit at similarity 1.0.
+    """Record an identifier-based (DOI/arXiv) or liveness hit.
 
-    Computes title and year agreement as informational notes but does not
-    demote the similarity — the identifier itself is the proof of identity.
+    Display score = title_ratio(ref.title, candidate.title) with no year
+    penalty — the identifier is proof of identity; year disagreement is
+    surfaced as a Note only.
+
+    For liveness-only sources (GitHub, URL) display_score is set to None
+    since there is no meaningful title to compare against.
     """
-    result.best_similarity = 1.0
+    liveness_only = source_name in (github.SOURCE_NAME, url_source.SOURCE_NAME)
+
     result.best_summary = summary
     result.best_source = source_name
+    result.id_confirmed = True
     result.year_mismatch_note = None
     result.id_notes = []
 
-    cand_title = summary.get("title")
-    t_sim = title_ratio(ref.title, cand_title)
-    result.id_title_similarity = t_sim
-    if ref.title and cand_title and t_sim < 0.85:
-        result.id_notes.append(
-            f"title similarity {t_sim:.2f} — DOI title: \"{cand_title}\""
-        )
+    if liveness_only:
+        result.display_score = None
+        result.is_liveness = True
+    else:
+        cand_title = summary.get("title")
+        if ref.title and cand_title:
+            t_sim = title_ratio(ref.title, cand_title)
+            result.display_score = t_sim
+            if t_sim < 0.85:
+                result.id_notes.append(
+                    f"DOI title: \"{cand_title}\""
+                )
+        else:
+            result.display_score = None
 
-    ref_year = ref.year
-    cand_year = summary.get("year")
-    if ref_year and cand_year and ref_year != cand_year:
-        result.id_notes.append(f"year mismatch (ref year={ref_year}, match year={cand_year})")
+        ref_year = ref.year
+        cand_year = summary.get("year")
+        if ref_year and cand_year and ref_year != cand_year:
+            result.id_notes.append(f"year mismatch (ref year={ref_year}, match year={cand_year})")
+            result.year_mismatch_note = f"ref year={ref_year}, match year={cand_year}"
 
 
 def lookup_reference(
@@ -187,9 +207,10 @@ def lookup_reference(
     delays: dict[str, float] | None = None,
     min_match: float = 0.80,
     stats: _Stats | None = None,
+    rate_limiter: _RateLimiter | None = None,
 ) -> LookupResult:
     """Run multi-source lookup for a single reference."""
-    rl = _RateLimiter(delays or _DEFAULT_DELAYS)
+    rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _DEFAULT_DELAYS)
     result = LookupResult(
         doi_attempted=ref.doi,
         arxiv_attempted=ref.arxiv_id,
@@ -237,15 +258,15 @@ def lookup_reference(
             _consider_id_hit(ref, result, summary, github.SOURCE_NAME)
             return result
 
-    # --- arXiv first (if the ref has an arXiv ID) ---
-    if ref.arxiv_id and result.best_similarity < 1.0:
+    # --- arXiv ID lookup (before scholarly loop) ---
+    if ref.arxiv_id and not result.id_confirmed:
         summary, sim = call(arxiv, "get_by_arxiv_id", ref.arxiv_id)
         if summary:
             result.arxiv_found_in.append(arxiv.SOURCE_NAME)
             _consider_id_hit(ref, result, summary, arxiv.SOURCE_NAME)
             return result
 
-    # --- Scholarly sources loop (OA → CR → SS → arXiv) ---
+    # --- Scholarly sources loop (OA → CR → DBLP → SS → arXiv) ---
     # Skip entirely when the reference is clearly a non-paper resource:
     # no DOI, no arXiv ID, no venue, and has a URL.
     url_only = (
@@ -256,7 +277,7 @@ def lookup_reference(
     )
 
     for src in (_SCHOLARLY_SOURCES if not url_only else []):
-        if result.best_similarity >= 1.0:
+        if result.id_confirmed:
             break
 
         if ref.doi:
@@ -265,19 +286,21 @@ def lookup_reference(
                 result.doi_found_in.append(src.SOURCE_NAME)
                 _consider_id_hit(ref, result, summary, src.SOURCE_NAME)
 
-        if result.best_similarity < 1.0 and ref.arxiv_id and src.SOURCE_NAME != arxiv.SOURCE_NAME:
+        if not result.id_confirmed and ref.arxiv_id and src.SOURCE_NAME != arxiv.SOURCE_NAME:
             summary, sim = call(src, "get_by_arxiv_id", ref.arxiv_id)
             if summary:
                 if src.SOURCE_NAME not in result.arxiv_found_in:
                     result.arxiv_found_in.append(src.SOURCE_NAME)
                 _consider_id_hit(ref, result, summary, src.SOURCE_NAME)
 
-        if result.best_similarity < 0.90 and ref.title:
+        current_score = result.display_score if result.display_score is not None else 0.0
+        if not result.id_confirmed and current_score < 0.90 and ref.title:
             summary, sim = call(src, "search_by_title", ref.title)
             _consider(ref, result, summary, sim, src.SOURCE_NAME)
 
     # --- Generic URL liveness fallback (last resort, no scholarly match) ---
-    if result.best_similarity < min_match and ref.url and not ref.github_url:
+    current_score = result.display_score if result.display_score is not None else 0.0
+    if current_score < min_match and ref.url and not ref.github_url:
         summary, sim = call_liveness(url_source, ref.url)
         if summary:
             _consider_id_hit(ref, result, summary, url_source.SOURCE_NAME)
@@ -315,21 +338,34 @@ def _format_ref_header(ref: Reference) -> str:
 def _format_result(ref: Reference, result: LookupResult, min_match: float) -> str:
     lines = [_format_ref_header(ref)]
     s = result.best_summary
-    sim = result.best_similarity
+    score = result.display_score
     src_tag = f"  [source: {result.best_source}]" if result.best_source else ""
 
-    if s and sim >= 1.0:
-        if s.get("doi"):
-            lines.append(f"    {_GREEN}OK{_RESET}  doi:{s['doi']}{src_tag}")
-        elif s.get("url"):
-            lines.append(f"    {_GREEN}OK{_RESET}  {s['url']}{src_tag}")
+    score_str = f"({score:.2f})" if score is not None else "(----)"
+
+    # Identifier string: prefer doi:, fall back to url
+    def id_str(summary: dict) -> str:
+        if summary.get("doi"):
+            return f"doi:{summary['doi']}"
+        return summary.get("url") or ""
+
+    # Effective numeric score for tier decisions (liveness = 1.0 for threshold purposes)
+    effective = score if score is not None else 1.0
+
+    if s and (result.id_confirmed or result.is_liveness):
+        lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {id_str(s)}{src_tag}")
         if result.url_liveness_check:
             lines.append(f"    {_ORANGE}Note:{_RESET} URL liveness check only — no bibliographic record found")
         for note in result.id_notes:
             lines.append(f"    {_ORANGE}Note:{_RESET} {note}")
 
-    elif s and sim >= min_match:
-        lines.append(f"    {_ORANGE}CLOSEST{_RESET} (similarity {sim:.2f}){src_tag}")
+    elif s and effective >= 0.90:
+        lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {id_str(s)}{src_tag}")
+        if result.year_mismatch_note:
+            lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
+
+    elif s and effective >= min_match:
+        lines.append(f"    {_ORANGE}CLOSEST{_RESET} {score_str}{src_tag}")
         lines.append(f"        Closest candidate across services:")
         citation = _format_citation(
             s.get("authors") or [],
@@ -341,10 +377,11 @@ def _format_result(ref: Reference, result: LookupResult, min_match: float) -> st
             lines.append(f"        {citation}")
         if s.get("url"):
             lines.append(f"        {s['url']}")
+        if result.year_mismatch_note:
+            lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
 
     else:
-        src_tag_nm = f"  [source: {result.best_source}]" if result.best_source else ""
-        lines.append(f"    {_RED}NO MATCH{_RESET} (similarity {sim:.2f}){src_tag_nm}")
+        lines.append(f"    {_RED}NO MATCH{_RESET} {score_str}{src_tag}")
         if s:
             lines.append(f"        Closest candidate across services:")
             citation = _format_citation(
@@ -358,19 +395,16 @@ def _format_result(ref: Reference, result: LookupResult, min_match: float) -> st
             if s.get("url"):
                 lines.append(f"        {s['url']}")
 
-    if result.year_mismatch_note and s and sim >= min_match:
-        lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
-
-    if sim < 1.0:
+    if not result.id_confirmed and not result.is_liveness:
         if result.doi_attempted and not result.doi_found_in:
             lines.append(f"    DOI not found in any source: {result.doi_attempted}")
         if result.arxiv_attempted and not result.arxiv_found_in:
             lines.append(f"    arXiv ID not found in any source: {result.arxiv_attempted}")
-        for dead_url, reason in result.dead_urls:
-            lines.append(f"    URL check failed ({reason}): {dead_url}")
-        if result.exhausted_sources:
-            srcs = ", ".join(sorted(set(result.exhausted_sources)))
-            lines.append(f"    {_ORANGE}Note:{_RESET} retries exhausted for {srcs} — results may be incomplete")
+    for dead_url, reason in result.dead_urls:
+        lines.append(f"    URL check failed ({reason}): {dead_url}")
+    if result.exhausted_sources:
+        srcs = ", ".join(sorted(set(result.exhausted_sources)))
+        lines.append(f"    {_ORANGE}Note:{_RESET} retries exhausted for {srcs} — results may be incomplete")
 
     return "\n".join(lines)
 
@@ -382,13 +416,14 @@ def check_references(
 ) -> None:
     """Look up every reference and print a human-readable summary to stdout."""
     stats = _Stats()
+    rl = _RateLimiter(delays or _DEFAULT_DELAYS)
     total = len(refs)
     for i, ref in enumerate(refs, start=1):
         print(
             f"[ref-checker] checking {i}/{total}: {ref.title or ref.raw[:60]!r}",
             file=sys.stderr,
         )
-        result = lookup_reference(ref, delays=delays, min_match=min_match, stats=stats)
+        result = lookup_reference(ref, delays=delays, min_match=min_match, stats=stats, rate_limiter=rl)
         print(_format_result(ref, result, min_match))
         print()
     print("[ref-checker]", file=sys.stderr)

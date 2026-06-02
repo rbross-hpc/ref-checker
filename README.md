@@ -2,7 +2,7 @@
 
 Verify the references in an academic paper against live bibliographic databases.
 Given a PDF, `ref-checker` extracts every reference (via an LLM), then looks
-each one up across **OpenAlex**, **CrossRef**, **Semantic Scholar**, and **arXiv**
+each one up across **OpenAlex**, **CrossRef**, **DBLP**, **Semantic Scholar**, and **arXiv**
 in sequence, and performs URL liveness checks for software repositories and web
 resources. Results are printed in citation order with color-coded status.
 
@@ -77,7 +77,8 @@ Options:
 --min-match F             Minimum similarity to report as CLOSEST (default: 0.80)
 --delay-openalex S        Seconds between OpenAlex calls (default: 2.0)
 --delay-crossref S        Seconds between CrossRef calls (default: 2.0)
---delay-semanticscholar S Seconds between Semantic Scholar calls (default: 5.0)
+--delay-dblp S            Seconds between DBLP calls (default: 1.0)
+--delay-semanticscholar S Seconds between Semantic Scholar calls (default: 8.0)
 --delay-arxiv S           Seconds between arXiv calls (default: 3.0)
 --delay-github S          Seconds between GitHub liveness checks (default: 1.0)
 --delay-url S             Seconds between generic URL liveness checks (default: 1.0)
@@ -138,48 +139,52 @@ Each lookup prints a JSON object to stdout:
 
 ```
 [1] Vaswani et al., "Attention Is All You Need", 2017, (Neural Information Processing Systems)
-    OK  doi:10.48550/arxiv.1706.03762  [source: openalex]
+    OK (0.99)  doi:10.48550/arxiv.1706.03762  [source: openalex]
 
-[2] Smith, "A Somewhat Related Paper", 2019, (Journal of Things)
-    CLOSEST (similarity 0.87)  [source: crossref]
+[2] Smith, "A Good Match", 2019, (Journal of Things)
+    OK (0.93)  doi:10.1000/xyz123  [source: crossref]
+    Note: year mismatch (ref year=2019, match year=2020)
+
+[3] Smith, "A Somewhat Related Paper", 2019, (Journal of Things)
+    CLOSEST (0.87)  [source: crossref]
         Closest candidate across services:
         Smith, "A Somewhat Related Paper on the Same Topic", 2020, (Journal of Things)
         https://doi.org/10.1000/xyz123
     Note: year mismatch (ref year=2019, match year=2020)
 
-[3] Wu, "ytopt code", 2024
-    OK  https://github.com/ytopt-team/ytopt  [source: github]
+[4] Wu, "ytopt code", 2024
+    OK (----)  https://github.com/ytopt-team/ytopt  [source: github]
     Note: URL liveness check only — no bibliographic record found
 
-[4] Bar et al., "Nonexistent Paper", 2020, (Some Conference)
-    NO MATCH (similarity 0.34)  [source: openalex]
+[5] Bar et al., "Nonexistent Paper", 2020, (Some Conference)
+    NO MATCH (0.34)  [source: openalex]
         Closest candidate across services:
         Foo et al., "A Different Paper", 2019, (Some Conference)
         https://doi.org/10.1234/fake.5678
     Note: retries exhausted for semanticscholar — results may be incomplete
 ```
 
+The number in parentheses is always **title similarity** (0.00–1.00), with a 0.10 year-mismatch
+penalty applied on title-search hits. For identifier-confirmed hits (DOI/arXiv) the number is
+the raw title ratio with no penalty — the identifier is proof; year disagreement appears as a Note.
+For GitHub/URL liveness checks the number is `----` (no titles to compare).
+
 Status indicators (color-coded when stdout is a TTY):
 
-- **OK** (green) — exact identifier match (DOI or arXiv ID), or confirmed-live
-  GitHub/web URL. Always shows `[source: name]`.
-- **CLOSEST** (orange) — best title-search similarity is ≥ 0.80; shows the
-  closest candidate with citation and URL.
-- **NO MATCH** (red) — best similarity is below 0.80; shows the closest
-  candidate found (if any) for manual inspection.
+- **OK** (green) — identifier confirmed (DOI/arXiv lookup), strong title match (≥ 0.90), or live URL.
+- **CLOSEST** (orange) — best title similarity (after any year penalty) is ≥ 0.80 and < 0.90;
+  shows the closest candidate with citation and URL.
+- **NO MATCH** (red) — best similarity is below 0.80; shows the closest candidate found (if any).
 
 Additional note lines (orange):
 
-- `Note: year mismatch (ref year=X, match year=Y)` — on CLOSEST results.
-- `Note: title similarity X.XX — DOI title: "..."` — on OK results when the
-  DOI-retrieved title diverges from the reference title.
-- `Note: URL liveness check only — no bibliographic record found` — on
-  GitHub/URL liveness OK results.
-- `Note: retries exhausted for <source> — results may be incomplete` — when
-  a source hit its retry limit for this reference (commonly Semantic Scholar
-  when unauthenticated).
-- `DOI not found in any source: <doi>` — DOI present in reference but not
-  found anywhere.
+- `Note: year mismatch (ref year=X, match year=Y)` — on all tiers when years differ.
+- `Note: DOI title: "..."` — on ID-confirmed hits when the DOI-retrieved title diverges
+  significantly (title sim < 0.85) from the reference title.
+- `Note: URL liveness check only — no bibliographic record found` — on GitHub/URL liveness hits.
+- `Note: retries exhausted for <source> — results may be incomplete` — when a source hit its
+  retry limit (commonly Semantic Scholar when unauthenticated).
+- `DOI not found in any source: <doi>` — DOI present in reference but not found anywhere.
 - `URL check failed (HTTP NNN): <url>` — confirmed-dead URL.
 
 Progress and credential status go to stderr; the reference report goes to
@@ -220,7 +225,7 @@ At the end of a run, a query summary is printed to stderr:
    - GitHub liveness first (if a GitHub URL is present — skips scholarly
      lookups entirely for software/dataset references)
    - arXiv by ID (if an arXiv ID is present)
-   - OpenAlex → CrossRef → Semantic Scholar → arXiv (title search skipped
+   - OpenAlex → CrossRef → DBLP → Semantic Scholar → arXiv (title search skipped
      when a prior source already returned ≥ 0.90 similarity)
    - Generic URL liveness as a last resort (for web-only references)
    - Lookups stop as soon as a perfect (1.0) match is found.

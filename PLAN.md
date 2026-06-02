@@ -4,7 +4,7 @@
 
 `ref-checker` is a Python CLI tool that extracts bibliographic references from
 an academic paper PDF and verifies each one against four external sources:
-OpenAlex, CrossRef, Semantic Scholar, and arXiv. For references that are
+OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. For references that are
 software repositories or web resources (with no scholarly record), it performs
 URL liveness checks against GitHub and general web URLs. Results are printed
 in citation order with color-coded status indicators.
@@ -34,8 +34,9 @@ ref-checker/
         ├── __init__.py
         ├── openalex.py            # primary scholarly source
         ├── crossref.py            # secondary scholarly source
-        ├── semanticscholar.py     # tertiary scholarly source
-        ├── arxiv.py               # quaternary / preprint source
+        ├── dblp.py                # tertiary scholarly source (CS conferences/journals)
+        ├── semanticscholar.py     # quaternary scholarly source
+        ├── arxiv.py               # quinary / preprint source
         ├── github.py              # GitHub URL liveness checker
         └── url.py                 # generic URL liveness fallback
 ```
@@ -147,7 +148,7 @@ For each reference, sources are tried in this order:
    (exact match, similarity = 1.0). Short-circuit on success.
 
 3. **Scholarly loop** (skipped entirely for url-only refs):
-   For each source in order — OpenAlex → CrossRef → Semantic Scholar → arXiv:
+   For each source in order — OpenAlex → CrossRef → DBLP → Semantic Scholar → arXiv:
    - DOI lookup (if `ref.doi`)
    - arXiv-ID lookup via the source's DOI or native arXiv endpoint
      (if `ref.arxiv_id`, skipping arXiv itself which was already tried)
@@ -181,7 +182,8 @@ When a candidate is found via title search (not DOI/arXiv ID):
   timer, so natural processing time counts toward the gap):
   - OpenAlex: 2.0 s
   - CrossRef: 2.0 s
-  - Semantic Scholar: 5.0 s
+  - DBLP: 1.0 s
+  - Semantic Scholar: 8.0 s
   - arXiv: 3.0 s
   - GitHub: 1.0 s
   - URL: 1.0 s
@@ -193,18 +195,18 @@ When a candidate is found via title search (not DOI/arXiv ID):
   that reference, and the source's exhaustion count is included in the
   end-of-run query summary.
 
-### ID-hit annotation
+### Scoring and ID-hit annotation
 
-DOI and arXiv-ID lookups return similarity = 1.0. After recording the hit,
-the driver computes the title ratio between the reference title and the
-candidate title as an informational check:
+The number shown in every status line is always **title similarity** — `title_ratio(ref.title,
+candidate.title)` — with the following rules:
 
-- If title similarity < 0.85, a `Note: title similarity X.XX — DOI title: "..."` 
-  line is shown. This can indicate a DOI collision, a subtitle/edition
-  difference, or a LLM extraction error.
-- If the years differ, a `Note: year mismatch (ref year=X, match year=Y)` line
-  is shown. This is common for preprints (arXiv year vs journal publication
-  year) and online-first articles.
+- **Identifier-confirmed hits** (DOI or arXiv lookup): raw title ratio, no year penalty.
+  The identifier is proof of identity; year disagreement is surfaced as a Note only.
+- **Title-search hits**: title ratio minus 0.10 if years differ, else raw title ratio.
+- **Liveness-only hits** (GitHub, URL): displayed as `(----)` — no titles to compare.
+
+If title similarity < 0.85 on an ID-confirmed hit, a `Note: DOI title: "..."` line is shown,
+indicating the DOI may resolve to a differently-titled paper (retitled preprint, DOI typo, etc.).
 
 ---
 
@@ -214,17 +216,25 @@ Each reference block:
 
 ```
 [N] Last[ et al.], "Title", Year, (Venue)
-    OK  doi:10.x/y  [source: openalex]
+    OK (0.98)  doi:10.x/y  [source: openalex]
 
 [N] Last et al., "Title", Year, (Venue)
-    CLOSEST (similarity 0.NN)  [source: crossref]
+    OK (0.93)  doi:10.x/y  [source: crossref]
+    Note: year mismatch (ref year=X, match year=Y)
+
+[N] Last et al., "Title", Year, (Venue)
+    OK (----)  https://github.com/foo/bar  [source: github]
+    Note: URL liveness check only — no bibliographic record found
+
+[N] Last et al., "Title", Year, (Venue)
+    CLOSEST (0.NN)  [source: crossref]
         Closest candidate across services:
         Last, "Candidate Title", Year, (Venue)
         https://doi.org/10.x/y
     Note: year mismatch (ref year=X, match year=Y)
 
 [N] Last et al., "Title", Year, (Venue)
-    NO MATCH (similarity 0.NN)  [source: openalex]
+    NO MATCH (0.NN)  [source: openalex]
         Closest candidate across services:
         Last, "Nearest Miss Title", Year, (Venue)
         https://...
@@ -233,13 +243,11 @@ Each reference block:
 
 ### Status meanings
 
-- **OK** (green) — exact identifier match (DOI or arXiv ID lookup returned a
-  hit), GitHub URL liveness confirmed live, or generic URL liveness confirmed
-  live. Similarity is always 1.0.
-- **CLOSEST** (orange) — best title-search similarity is ≥ `--min-match`
-  (default 0.80) but not a direct identifier match.
-- **NO MATCH** (red) — best similarity across all sources is below
-  `--min-match`. The closest candidate found (if any) is shown for reference.
+- **OK** (green) — identifier confirmed (DOI/arXiv lookup), strong title match (score ≥ 0.90),
+  or confirmed-live GitHub/web URL. The number is always title similarity (or `----` for liveness).
+- **CLOSEST** (orange) — best score is ≥ `--min-match` (default 0.80) and < 0.90;
+  shows the closest candidate citation and URL.
+- **NO MATCH** (red) — best score is below `--min-match`. Closest candidate shown if any.
 
 ### Color
 
@@ -249,10 +257,8 @@ produces plain text.
 
 ### Additional note lines
 
-- `Note: year mismatch (ref year=X, match year=Y)` — on CLOSEST results when
-  the reference year and candidate year differ.
-- `Note: title similarity X.XX — DOI title: "..."` — on OK results when the
-  DOI-retrieved title diverges significantly from the reference title.
+- `Note: year mismatch (ref year=X, match year=Y)` — on any tier when years differ.
+- `Note: DOI title: "..."` — on ID-confirmed hits when title similarity < 0.85.
 - `Note: URL liveness check only — no bibliographic record found` — on OK
   results from `[source: github]` or `[source: url]`.
 - `Note: retries exhausted for <source> — results may be incomplete` — when a
@@ -294,7 +300,8 @@ Full pipeline: extract references then check each one.
 --min-match F             CLOSEST threshold (default: 0.80)
 --delay-openalex S        Per-call delay in seconds (default: 2.0)
 --delay-crossref S        (default: 2.0)
---delay-semanticscholar S (default: 5.0)
+--delay-dblp S            (default: 1.0)
+--delay-semanticscholar S (default: 8.0)
 --delay-arxiv S           (default: 3.0)
 --delay-github S          (default: 1.0)
 --delay-url S             (default: 1.0)
@@ -352,6 +359,9 @@ as `<set>` in the credential summary at startup.
 - **Concurrency**: lookups are strictly sequential. For a 60-reference paper
   with default delays, a full run takes 3–5 minutes. A per-source worker thread
   pool (with shared rate-limiter) would reduce this significantly.
+- **Rate limiter scope**: the rate limiter is shared across all references within
+  a single `check_references()` call, enforcing inter-request delays correctly
+  across reference boundaries. It does not persist across separate CLI invocations.
 - **Caching**: API responses are not cached. Re-running on the same paper
   repeats all API calls. An optional on-disk cache (keyed by query hash) would
   make iteration much faster.
