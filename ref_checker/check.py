@@ -1,10 +1,13 @@
 """Multi-source reference lookup driver and output formatter."""
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 _USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
@@ -409,22 +412,179 @@ def _format_result(ref: Reference, result: LookupResult, min_match: float) -> st
     return "\n".join(lines)
 
 
+_SIDECAR_SCHEMA_VERSION = 1
+
+
+def _refs_hash(refs: list[Reference]) -> str:
+    raw = "\n".join(str(r.index) + r.raw for r in sorted(refs, key=lambda r: r.index))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _status_label(result: LookupResult, min_match: float) -> str:
+    if result.is_liveness or result.id_confirmed:
+        return "OK"
+    score = result.display_score if result.display_score is not None else 0.0
+    if score >= 0.90:
+        return "OK"
+    if score >= min_match:
+        return "CLOSEST"
+    return "NO MATCH"
+
+
+def _result_to_dict(result: LookupResult, min_match: float) -> dict:
+    return {
+        "status": _status_label(result, min_match),
+        "display_score": result.display_score,
+        "best_source": result.best_source,
+        "id_confirmed": result.id_confirmed,
+        "is_liveness": result.is_liveness,
+        "best_summary": result.best_summary,
+        "doi_attempted": result.doi_attempted,
+        "doi_found_in": result.doi_found_in,
+        "arxiv_attempted": result.arxiv_attempted,
+        "arxiv_found_in": result.arxiv_found_in,
+        "year_mismatch_note": result.year_mismatch_note,
+        "id_notes": result.id_notes,
+        "dead_urls": [list(t) for t in result.dead_urls],
+        "exhausted_sources": result.exhausted_sources,
+        "url_liveness_check": result.url_liveness_check,
+    }
+
+
+def _result_from_dict(d: dict) -> LookupResult:
+    return LookupResult(
+        best_summary=d.get("best_summary"),
+        display_score=d.get("display_score"),
+        best_source=d.get("best_source"),
+        id_confirmed=d.get("id_confirmed", False),
+        is_liveness=d.get("is_liveness", False),
+        doi_attempted=d.get("doi_attempted"),
+        doi_found_in=d.get("doi_found_in") or [],
+        arxiv_attempted=d.get("arxiv_attempted"),
+        arxiv_found_in=d.get("arxiv_found_in") or [],
+        year_mismatch_note=d.get("year_mismatch_note"),
+        id_notes=d.get("id_notes") or [],
+        dead_urls=[tuple(t) for t in (d.get("dead_urls") or [])],
+        exhausted_sources=d.get("exhausted_sources") or [],
+        url_liveness_check=d.get("url_liveness_check", False),
+    )
+
+
+def _needs_retry(entry: dict, retry_closest: bool) -> bool:
+    status = entry.get("status", "NO MATCH")
+    if status not in ("OK", "CLOSEST", "NO MATCH"):
+        return True
+    if status == "NO MATCH":
+        return True
+    if status == "CLOSEST" and retry_closest:
+        return True
+    if entry.get("exhausted_sources"):
+        return True
+    if entry.get("dead_urls"):
+        return True
+    return False
+
+
+def _load_sidecar(path: Path, refs: list[Reference]) -> tuple[dict, bool]:
+    """Load sidecar JSON. Returns (entries_by_index, hash_ok)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}, False
+    if data.get("schema_version") != _SIDECAR_SCHEMA_VERSION:
+        return {}, False
+    stored_hash = data.get("refs_hash")
+    current_hash = _refs_hash(refs)
+    hash_ok = stored_hash == current_hash
+    entries = {int(k): v for k, v in (data.get("references") or {}).items()}
+    return entries, hash_ok
+
+
+def _write_sidecar(
+    path: Path,
+    pdf_name: str,
+    refs: list[Reference],
+    all_results: dict[int, LookupResult],
+    min_match: float,
+) -> None:
+    data = {
+        "schema_version": _SIDECAR_SCHEMA_VERSION,
+        "pdf": pdf_name,
+        "refs_hash": _refs_hash(refs),
+        "references": {
+            str(ref.index): {
+                "ref": ref.to_dict(),
+                "result": _result_to_dict(all_results[ref.index], min_match),
+            }
+            for ref in refs
+            if ref.index in all_results
+        },
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def check_references(
     refs: list[Reference],
     delays: dict[str, float] | None = None,
     min_match: float = 0.80,
+    sidecar: Path | None = None,
+    resume: bool = False,
+    retry_all: bool = False,
+    retry_closest: bool = False,
+    pdf_name: str = "",
 ) -> None:
     """Look up every reference and print a human-readable summary to stdout."""
     stats = _Stats()
     rl = _RateLimiter(delays or _DEFAULT_DELAYS)
+    all_results: dict[int, LookupResult] = {}
+    prior: dict[int, dict] = {}
+    cached_count = 0
+
+    if sidecar is not None and resume and sidecar.exists():
+        prior, hash_ok = _load_sidecar(sidecar, refs)
+        if not hash_ok:
+            print(
+                "[ref-checker] WARNING: sidecar refs_hash mismatch — "
+                "references may have changed; ignoring sidecar and running fresh.",
+                file=sys.stderr,
+            )
+            prior = {}
+
     total = len(refs)
     for i, ref in enumerate(refs, start=1):
-        print(
-            f"[ref-checker] checking {i}/{total}: {ref.title or ref.raw[:60]!r}",
-            file=sys.stderr,
+        prior_entry = prior.get(ref.index)
+        use_cached = (
+            not retry_all
+            and prior_entry is not None
+            and not _needs_retry(prior_entry, retry_closest)
         )
-        result = lookup_reference(ref, delays=delays, min_match=min_match, stats=stats, rate_limiter=rl)
+
+        if use_cached:
+            result = _result_from_dict(prior_entry["result"])
+            cached_count += 1
+            print(
+                f"[ref-checker] checking {i}/{total} (cached): {ref.title or ref.raw[:60]!r}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[ref-checker] checking {i}/{total}: {ref.title or ref.raw[:60]!r}",
+                file=sys.stderr,
+            )
+            result = lookup_reference(
+                ref, delays=delays, min_match=min_match, stats=stats, rate_limiter=rl
+            )
+
+        all_results[ref.index] = result
         print(_format_result(ref, result, min_match))
         print()
+
+        if sidecar is not None:
+            _write_sidecar(sidecar, pdf_name, refs, all_results, min_match)
+
     print("[ref-checker]", file=sys.stderr)
+    if cached_count:
+        print(f"[ref-checker] Resumed: {cached_count} ref(s) loaded from sidecar", file=sys.stderr)
     stats.print_summary()

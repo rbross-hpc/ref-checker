@@ -305,7 +305,42 @@ Full pipeline: extract references then check each one.
 --delay-arxiv S           (default: 3.0)
 --delay-github S          (default: 1.0)
 --delay-url S             (default: 1.0)
+--results-json PATH       Sidecar file (default: <pdf-stem>.results.json next to PDF)
+--no-results-json         Disable sidecar entirely
+--resume                  Skip resolved refs; retry only failures/exhausted
+--retry-all               Re-query every ref regardless of sidecar
+--retry-closest           Also re-query CLOSEST refs on resume
 ```
+
+### Per-paper resume sidecar
+
+Every `check` run writes `<pdf-stem>.results.json` next to the PDF (atomic
+write via a `.tmp` rename). The sidecar contains:
+
+- `schema_version` — format version for future compatibility.
+- `pdf` — source file name.
+- `refs_hash` — SHA-256 prefix of the reference list; used to detect stale
+  sidecars when the PDF is re-extracted.
+- `references` — object keyed by reference index; each entry has `ref`
+  (serialized `Reference`) and `result` (serialized `LookupResult` including
+  `status`, `display_score`, `best_source`, `exhausted_sources`, etc.).
+
+**Resume policy** (applied when `--resume` is set):
+
+A ref is considered **done** (skipped) when all hold:
+- `status == "OK"`
+- `exhausted_sources` is empty
+- `dead_urls` is empty
+
+A ref is **retried** when any hold:
+- `status` is `NO MATCH`
+- `status` is `CLOSEST` and `--retry-closest` is set
+- `exhausted_sources` is non-empty (transient network/rate-limit failure)
+- `dead_urls` is non-empty
+- ref index not present in sidecar
+
+If the sidecar's `refs_hash` does not match the current reference list, a
+warning is printed and the sidecar is ignored (full run performed).
 
 ### `ref-checker extract PDF [options]`
 

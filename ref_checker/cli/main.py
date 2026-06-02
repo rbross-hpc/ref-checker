@@ -50,6 +50,16 @@ def _build_check_parser(sub) -> None:
                    help="Seconds between GitHub liveness checks (default: 1.0)")
     p.add_argument("--delay-url", type=float, default=1.0, metavar="S",
                    help="Seconds between generic URL liveness checks (default: 1.0)")
+    p.add_argument("--results-json", default=None, metavar="PATH",
+                   help="Sidecar results file (default: <pdf-stem>.results.json next to PDF)")
+    p.add_argument("--no-results-json", action="store_true",
+                   help="Disable sidecar entirely — do not read or write results")
+    p.add_argument("--resume", action="store_true",
+                   help="Skip refs already resolved in sidecar; retry only failures")
+    p.add_argument("--retry-all", action="store_true",
+                   help="Re-query every ref even if sidecar marks it done (implies --resume ignored for skipping)")
+    p.add_argument("--retry-closest", action="store_true",
+                   help="Also re-query refs previously reported as CLOSEST")
 
 
 def _build_extract_parser(sub) -> None:
@@ -152,15 +162,40 @@ def run_check(args) -> None:
         data = json.loads(refs_path.read_text(encoding="utf-8"))
         refs = [extract.Reference.from_dict(r) for r in data]
         print(f"[ref-checker] Loaded {len(refs)} reference(s) from {refs_path}", file=sys.stderr)
+        source_name = refs_path.stem
+        default_sidecar = refs_path.parent / f"{refs_path.stem}.results.json"
     else:
         refs = _load_pdf_and_extract(pdf_path, args.tail_pages)
+        source_name = pdf_path.name
+        default_sidecar = pdf_path.parent / f"{pdf_path.stem}.results.json"
 
     if not refs:
         print("No references found.", file=sys.stderr)
         sys.exit(0)
 
+    if args.no_results_json:
+        sidecar = None
+    elif args.results_json:
+        sidecar = Path(args.results_json).resolve()
+    else:
+        sidecar = default_sidecar
+
+    if sidecar is not None:
+        print(f"[ref-checker] Sidecar: {sidecar}", file=sys.stderr)
+        if args.resume and sidecar.exists():
+            print("[ref-checker] Resuming from sidecar...", file=sys.stderr)
+
     print(f"[ref-checker] Checking {len(refs)} reference(s)...\n", file=sys.stderr)
-    check.check_references(refs, delays=delays, min_match=args.min_match)
+    check.check_references(
+        refs,
+        delays=delays,
+        min_match=args.min_match,
+        sidecar=sidecar,
+        resume=args.resume,
+        retry_all=args.retry_all,
+        retry_closest=args.retry_closest,
+        pdf_name=source_name,
+    )
 
 
 def run_extract(args) -> None:

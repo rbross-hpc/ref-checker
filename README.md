@@ -82,7 +82,31 @@ Options:
 --delay-arxiv S           Seconds between arXiv calls (default: 3.0)
 --delay-github S          Seconds between GitHub liveness checks (default: 1.0)
 --delay-url S             Seconds between generic URL liveness checks (default: 1.0)
+--results-json PATH       Sidecar file path (default: <pdf-stem>.results.json)
+--no-results-json         Disable sidecar entirely
+--resume                  Skip refs already resolved; retry only failures
+--retry-all               Re-query every ref regardless of sidecar
+--retry-closest           Also re-query refs previously reported as CLOSEST
 ```
+
+### Resuming interrupted or incomplete runs
+
+Every `check` run writes a `<pdf-stem>.results.json` sidecar file next to the
+PDF. On re-run, pass `--resume` to skip references that already resolved cleanly
+and retry only those that failed (NO MATCH, exhausted sources, dead URLs):
+
+```bash
+ref-checker check paper.pdf --resume
+```
+
+The sidecar is written atomically after each reference, so a Ctrl-C or network
+failure mid-run leaves the sidecar in a valid state. On the next `--resume` run,
+completed refs are replayed from the sidecar instantly and failed refs are
+re-queried.
+
+If the reference list changes (e.g., you re-extract from a revised PDF), the
+sidecar detects the mismatch via a content hash and falls back to a full run
+with a warning.
 
 ### Extract references only
 
