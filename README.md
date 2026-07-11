@@ -63,16 +63,25 @@ Sensitive values are displayed as `<set>` in the credential summary at startup.
 ref-checker check paper.pdf
 ```
 
-Skip the extraction step if you already have a refs JSON file:
+Skip PDF extraction by supplying a pre-extracted refs JSON file. The PDF
+argument is optional in this case — omit it entirely or pass one as a
+label (it will not be read; a warning is printed if supplied):
 
 ```bash
-ref-checker check paper.pdf --refs-json paper.refs.json
+ref-checker check --refs-json paper.refs.json
+ref-checker check --refs-json paper.refs.json --results-json out.json
 ```
+
+The refs JSON must be a bare JSON array of ref dicts, each with at minimum
+a `title` field. All other fields (`index`, `raw`, `authors`, `year`, `doi`,
+`arxiv_id`, `venue`, `url`) are optional. `index` defaults to 0 and is
+auto-sequenced from the list position.
 
 Options:
 
 ```
---refs-json PATH          Load references from a previously extracted JSON file
+--refs-json PATH          Load references from a JSON array and skip PDF extraction.
+                          PDF argument becomes optional; a warning is printed if supplied.
 --refs-cache PATH         Refs cache file (default: <pdf-stem>.refs.json next to PDF)
 --no-refs-cache           Disable refs cache — always extract, never write
 --re-extract              Force re-extraction even if refs cache is valid

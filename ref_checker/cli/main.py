@@ -29,9 +29,12 @@ def _build_check_parser(sub) -> None:
         "check",
         help="Extract references from a PDF and check each against all sources.",
     )
-    p.add_argument("pdf", help="Path to the input PDF file")
+    p.add_argument("pdf", nargs="?", default=None,
+                   help="Path to the input PDF file. Optional when --refs-json is supplied.")
     p.add_argument("--refs-json", default=None, metavar="PATH",
-                   help="Skip extraction and load references from this JSON file")
+                   help="Load references from a JSON file (bare list of ref dicts) and skip "
+                        "PDF extraction entirely. The PDF argument is ignored when this flag "
+                        "is used; a warning is printed if one is supplied.")
     p.add_argument("--tail-pages", type=int, default=5, metavar="N",
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
     p.add_argument("--min-match", type=float, default=0.80, metavar="F",
@@ -142,11 +145,6 @@ def _load_pdf_and_extract(pdf_path, tail_pages: int) -> list[extract.Reference]:
 def run_check(args) -> None:
     from pathlib import Path
 
-    pdf_path = Path(args.pdf).resolve()
-    if not pdf_path.exists():
-        print(f"Error: file not found: {pdf_path}", file=sys.stderr)
-        sys.exit(1)
-
     print("[ref-checker] Credential / configuration status:", file=sys.stderr)
     _log_credentials()
 
@@ -161,6 +159,11 @@ def run_check(args) -> None:
     }
 
     if args.refs_json:
+        if args.pdf is not None:
+            print(
+                "[ref-checker] Warning: PDF argument is ignored when --refs-json is used.",
+                file=sys.stderr,
+            )
         refs_path = Path(args.refs_json).resolve()
         if not refs_path.exists():
             print(f"Error: refs JSON not found: {refs_path}", file=sys.stderr)
@@ -171,6 +174,16 @@ def run_check(args) -> None:
         source_name = refs_path.stem
         default_sidecar = refs_path.parent / f"{refs_path.stem}.results.json"
     else:
+        if args.pdf is None:
+            print(
+                "Error: a PDF path is required unless --refs-json is supplied.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        pdf_path = Path(args.pdf).resolve()
+        if not pdf_path.exists():
+            print(f"Error: file not found: {pdf_path}", file=sys.stderr)
+            sys.exit(1)
         refs_cache_path = (
             Path(args.refs_cache).resolve() if args.refs_cache
             else pdf_path.parent / f"{pdf_path.stem}.refs.json"
