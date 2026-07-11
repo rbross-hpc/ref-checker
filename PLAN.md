@@ -292,12 +292,16 @@ This makes rate-limit issues and missing API keys immediately visible.
 
 ## CLI subcommands
 
-### `ref-checker check PDF [options]`
+### `ref-checker check [PDF] [options]`
 
-Full pipeline: extract references then check each one.
+Full pipeline: extract references then check each one. `PDF` is optional
+when `--refs-json` is supplied; a warning is printed if both are given.
+When neither is supplied, an error is printed and the command exits.
 
 ```
---refs-json PATH          Load pre-extracted references (skip LLM extraction)
+--refs-json PATH          Load references from a bare JSON array of ref dicts,
+                          skipping PDF extraction entirely. PDF argument becomes
+                          optional; sidecar defaults to <refs-json-stem>.results.json.
 --refs-cache PATH         Refs cache file (default: <pdf-stem>.refs.json next to PDF)
 --no-refs-cache           Disable refs cache entirely
 --re-extract              Force re-extraction even if refs cache is valid
