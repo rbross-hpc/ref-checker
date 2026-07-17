@@ -49,6 +49,7 @@ def test_show_contains_schema_section(capsys):
     out = capsys.readouterr().out
     assert "Reference JSON schema" in out
     assert "`--refs-json`" in out
+    assert "references/schema.md" in out
 
 
 def test_show_contains_status_codes(capsys):
@@ -63,6 +64,7 @@ def test_export_creates_skill_md(tmp_path):
     dest = tmp_path / "reference-checking"
     run_skill(_make_args_export(dest))
     assert (dest / "SKILL.md").exists()
+    assert (dest / "references" / "schema.md").exists()
 
 
 def test_export_skill_md_matches_show(tmp_path, capsys):

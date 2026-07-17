@@ -344,16 +344,18 @@ Common harness locations:
 
 ### Contributing to the bundled skill
 
-If you change the reference JSON schema in `ref_checker/extract.py` (the
-`_SYSTEM_PROMPT` constant or the `Reference` dataclass), also update the
-**Reference JSON schema** section in
-`ref_checker/skills/reference-checking/SKILL.md`. A comment at the top of
-`_SYSTEM_PROMPT` in `extract.py` documents this obligation.
+The reference JSON schema has a **single source of truth**:
+`ref_checker/skills/reference-checking/references/schema.md`. Both the LLM
+extraction prompt in `ref_checker/extract.py` (loaded via `importlib.resources`
+at import time) and the `SKILL.md` agent instructions point to this file. To
+add or change a schema field, edit only `schema.md`; the LLM prompt picks up
+the change automatically on the next import.
 
 The tests in `tests/test_skill_cli.py` assert that specific strings are present
 in `SKILL.md` — including the section heading `"Reference JSON schema"` and the
 status labels `"OK"`, `"CLOSEST"`, `"NO MATCH"`. If you rename these sections,
-update the corresponding test assertions.
+update the corresponding test assertions. `tests/test_schema_prompt.py` asserts
+that all expected field names appear in the assembled LLM prompt.
 
 The `SKILL.md` frontmatter (`name`, `description`) is required by the
 [OpenCode Agent Skills spec](https://opencode.ai/docs/skills/). Do not remove

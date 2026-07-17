@@ -167,65 +167,13 @@ For GitHub/URL liveness checks the score is `----`.
 
 ## Reference JSON schema
 
-When using `--refs-json`, supply a **bare JSON array** of reference objects.
-Each object may have the following fields:
-
-| Field | Type | Notes |
-|---|---|---|
-| `index` | integer | 1-based position. Defaults to 0 if omitted; sequenced from list order. |
-| `raw` | string | Full reference text as it appears in the paper. Used for display only. |
-| `title` | string \| null | **Primary lookup key.** Include whenever possible. |
-| `authors` | array of strings | Each entry is one author's full name in natural order, e.g. `"Bernhard Scholkopf"`. Use `[]` for corporate/organizational authors or when unknown. |
-| `year` | integer \| null | Publication year. Used in year-mismatch scoring. |
-| `doi` | string \| null | Canonical DOI only — e.g. `"10.1145/1234.5678"`. Strip any `doi:`, `https://doi.org/`, or `http://dx.doi.org/` prefix. |
-| `arxiv_id` | string \| null | Bare arXiv ID — e.g. `"2301.01234"`. Strip any `arXiv:` prefix or version suffix like `v2`. |
-| `venue` | string \| null | Journal, conference, or publisher name. |
-| `url` | string \| null | Any non-DOI, non-arXiv URL (GitHub repo, project page, etc.). Space-separate multiple URLs. Do not put `doi.org` or `arxiv.org` URLs here. |
-| `github_url` | string \| null | Normally derived automatically from `url` — you do not need to set this separately. |
+When using `--refs-json`, supply a bare JSON array of reference objects.
+The full field-by-field schema, extraction rules, and worked examples live
+in this skill's `references/schema.md`.
 
 At minimum, include `title`. Everything else is optional but improves lookup
 accuracy. `doi` and `arxiv_id` enable identifier-based lookup which is faster
 and more reliable than title search.
-
-### Minimal example
-
-```json
-[
-  {
-    "index": 1,
-    "title": "Attention Is All You Need",
-    "authors": ["Ashish Vaswani", "Noam Shazeer"],
-    "year": 2017,
-    "doi": "10.48550/arXiv.1706.03762"
-  },
-  {
-    "index": 2,
-    "title": "Autotuning applications at scale",
-    "authors": [],
-    "year": 2023,
-    "url": "https://github.com/ytopt-team/ytopt"
-  }
-]
-```
-
-### Full example with all fields
-
-```json
-[
-  {
-    "index": 1,
-    "raw": "SCHOLKOPF, B. et al. (2000). New support vector algorithms. Neural Computation, 12(5), 1207-1245.",
-    "title": "New support vector algorithms",
-    "authors": ["Bernhard Scholkopf", "Alex Smola", "Robert Williamson", "Peter Bartlett"],
-    "year": 2000,
-    "doi": null,
-    "arxiv_id": null,
-    "venue": "Neural Computation",
-    "url": null,
-    "github_url": null
-  }
-]
-```
 
 ## Workflow guidance
 

@@ -9,7 +9,9 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from importlib.resources import files
 from pathlib import Path
+from string import Template
 
 _HEADING_RE = re.compile(
     r"^\s*(References|Bibliography|Works\s+Cited|Literature\s+Cited)\s*$",
@@ -45,10 +47,18 @@ _SKIP_URL_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-# NOTE: The field descriptions below are mirrored in
-# ref_checker/skills/reference-checking/SKILL.md ("Reference JSON schema").
-# Keep both in sync when adding or changing fields.
-_SYSTEM_PROMPT = """\
+# The reference JSON schema is the single source of truth in
+# ref_checker/skills/reference-checking/references/schema.md.
+# It is loaded here at import time and interpolated into the LLM prompt,
+# so the extraction prompt and the human/agent-facing SKILL.md always share
+# one definition. To change a schema field, edit only schema.md.
+_SCHEMA_MD = (
+    files("ref_checker")
+    .joinpath("skills/reference-checking/references/schema.md")
+    .read_text(encoding="utf-8")
+)
+
+_SYSTEM_PROMPT = Template("""\
 You are a reference-extraction assistant. The user will provide text that was \
 automatically extracted from a PDF of an academic paper using a PDF-to-text \
 tool. The text represents the references section of the paper (or the tail \
@@ -60,41 +70,10 @@ multi-column layouts. Do your best to interpret the text correctly despite \
 these artifacts.
 
 Extract every bibliographic reference and return \
-a JSON object with a single key "references" whose value is an array.
+a JSON object with a single key "references" whose value is an array. \
+Each element must conform to the following schema:
 
-Rules:
-1. Each element must have these fields (use null when a field is not present):
-     index     (integer, 1-based, in the order the reference appears)
-     raw       (string, the full reference text exactly as it appears, excluding
-                any leading citation label such as "[1]", "1.", or "(1)")
-     title     (string or null)
-     authors   (array of strings, each a single author's full name in
-                natural order e.g. "Bernhard Scholkopf"; empty array if none)
-     year      (integer or null)
-     doi       (string or null — the canonical DOI only, e.g. "10.1145/1234.5678";
-                strip any "doi:", "https://doi.org/" or "http://dx.doi.org/" prefix)
-     arxiv_id  (string or null — bare arXiv ID only, e.g. "2301.01234";
-                strip any "arXiv:" prefix or version suffix like "v2")
-     venue     (string or null, journal/conference/publisher name)
-     url       (string or null — any non-DOI, non-arXiv URL present in the
-                reference, such as a GitHub repository, project page, or
-                institutional landing page; if multiple URLs are present,
-                separate them with a single space; do not include doi.org or
-                arxiv.org URLs here as those belong in doi/arxiv_id)
-2. If the reference has a corporate or organizational author (e.g. "IBM",
-   "World Health Organization", "scikit-learn developers"), set authors to [].
-3. Do not include citation labels, numbers, or bracketed keys in any field,
-   including raw.
-4. If a DOI appears in any form in the reference text — bare, prefixed with
-   "doi:", or as a URL (https://doi.org/..., http://dx.doi.org/...) — extract
-   the canonical DOI string into the doi field.
-5. If an arXiv identifier appears in any form (e.g. "arXiv:2301.01234",
-   "arXiv:2301.01234v2", or in a URL like arxiv.org/abs/2301.01234), extract
-   just the bare ID (no prefix, no version) into the arxiv_id field.
-6. If the reference contains a GitHub URL (or other project/software URL that
-   is not a DOI or arXiv link), extract it into the url field.
-7. Skip any text that is not a bibliographic reference (tool names, section
-   headers, acknowledgements, footnotes, etc.).
+$schema
 
 Examples:
 
@@ -133,7 +112,7 @@ Output:
     "url": null
   }
 
-Return only the JSON object, no commentary."""
+Return only the JSON object, no commentary.""").substitute(schema=_SCHEMA_MD)
 
 _USER_PROMPT_TEMPLATE = """\
 Below is text automatically extracted from the references section of an \

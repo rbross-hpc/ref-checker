@@ -37,7 +37,9 @@ ref-checker/
     │   └── skill.py               # skill show / skill export subcommands
     ├── skills/
     │   └── reference-checking/
-    │       └── SKILL.md           # bundled Agent Skill (shipped as package data)
+    │       ├── SKILL.md           # bundled Agent Skill (shipped as package data)
+    │       └── references/
+    │           └── schema.md      # single source of truth for the reference JSON schema
     └── sources/
         ├── __init__.py
         ├── openalex.py            # primary scholarly source
@@ -535,15 +537,29 @@ Two subcommands are exposed:
 installation path — the user chooses the harness-specific destination and the
 CLI does not auto-detect or modify any harness configuration.
 
-### Schema sync obligation
+### Schema single source of truth
 
-The `SKILL.md` **Reference JSON schema** section documents the same fields as
-`_SYSTEM_PROMPT` in `ref_checker/extract.py` and the `Reference` dataclass.
-These are two copies of the same truth. A comment at the top of `_SYSTEM_PROMPT`
-in `extract.py` documents this obligation. When adding or removing a field,
-update both. The test `test_show_contains_schema_section` in
-`tests/test_skill_cli.py` asserts that the section heading is present, locking
-in the structure.
+The reference JSON schema lives in exactly one file:
+
+```
+ref_checker/skills/reference-checking/references/schema.md
+```
+
+It is used in two ways simultaneously:
+
+1. **LLM extraction prompt** — loaded at import time in `ref_checker/extract.py`
+   via `importlib.resources.files("ref_checker").joinpath("skills/…/schema.md").read_text()`,
+   then interpolated into the prompt template using `string.Template`. The
+   assembled `_SYSTEM_PROMPT` constant contains the full schema text inline.
+
+2. **Agent / human reference** — `SKILL.md` links to `references/schema.md`
+   in its §Reference JSON schema section; the file is exported alongside
+   `SKILL.md` when the user runs `ref-checker skill export`.
+
+To add or change a schema field, edit only `schema.md`. The LLM prompt picks
+up the change automatically on the next import. `tests/test_schema_prompt.py`
+asserts that all expected field names appear in the assembled prompt, so a
+missing or misspelled field name in `schema.md` will fail the test suite.
 
 ---
 
