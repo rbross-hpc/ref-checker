@@ -27,9 +27,21 @@ def _make_args_export(path, force=False):
 def test_show_prints_markdown(capsys):
     run_skill(_make_args_show())
     out = capsys.readouterr().out
-    assert out.startswith("# ")
+    assert out.startswith("---\n")
+    assert "# " in out
     assert "ref-checker" in out
     assert len(out) > 100
+
+
+def test_show_has_valid_frontmatter(capsys):
+    run_skill(_make_args_show())
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[0] == "---"
+    end = lines.index("---", 1)
+    frontmatter = "\n".join(lines[1:end])
+    assert "name: reference-checking" in frontmatter
+    assert "description:" in frontmatter
 
 
 def test_show_contains_schema_section(capsys):

@@ -2,12 +2,14 @@
 
 ## Overview
 
-`ref-checker` is a Python CLI tool that extracts bibliographic references from
-an academic paper PDF and verifies each one against four external sources:
-OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. For references that are
-software repositories or web resources (with no scholarly record), it performs
-URL liveness checks against GitHub and general web URLs. Results are printed
-in citation order with color-coded status indicators.
+`ref-checker` is a Python CLI tool that verifies bibliographic references
+against live scholarly databases. References can be provided as a **PDF** (text
+extracted and parsed via LLM) or as a **JSON list** supplied directly, with
+both paths producing identical lookup and reporting behaviour. Each reference is
+checked against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. For
+references that are software repositories or web resources (with no scholarly
+record), it performs URL liveness checks against GitHub and general web URLs.
+Results are printed in citation order with color-coded status indicators.
 
 ---
 
@@ -31,7 +33,11 @@ ref-checker/
     ├── check.py                   # driver: lookup, rate limiting, orchestration
     ├── cli/
     │   ├── __init__.py
-    │   └── main.py                # argparse subcommand dispatcher
+    │   ├── main.py                # argparse subcommand dispatcher
+    │   └── skill.py               # skill show / skill export subcommands
+    ├── skills/
+    │   └── reference-checking/
+    │       └── SKILL.md           # bundled Agent Skill (shipped as package data)
     └── sources/
         ├── __init__.py
         ├── openalex.py            # primary scholarly source
@@ -446,7 +452,7 @@ Run the test suite with:
 pytest tests/
 ```
 
-111 tests, no network calls, runs in < 1 s. Coverage:
+126 tests, no network calls, runs in < 1 s. Coverage:
 
 | File | What's tested |
 |---|---|
@@ -456,6 +462,88 @@ pytest tests/
 | `test_format.py` | `format_result` for every output tier (OK ID, OK ≥0.90, CLOSEST, NO MATCH, liveness); all Note line types; `_format_citation` edge cases |
 | `test_dblp.py` | `_normalize_authors` (list/dict/digit-suffix), `_normalize_doi`, `_summarize` (title, year, DOI, authors, venue, edge cases) |
 | `test_sources.py` | `_summarize` for openalex, crossref, semanticscholar; `_parse_entry` for arxiv |
+| `test_cli_check_refs_json.py` | `check --refs-json`: no-PDF run, sidecar defaults, PDF-ignored warning, explicit results path, missing file exit |
+| `test_skill_cli.py` | `skill show`: markdown output, schema section, status labels, frontmatter; `skill export`: creates SKILL.md, matches show output, refuses non-empty without --force, --force overwrites, creates parent dirs, empty dir |
+
+---
+
+## Agent Skills subsystem
+
+### Purpose
+
+AI coding assistants can use `ref-checker` to audit references on the user's
+behalf. The skill subsystem ships reusable agent instructions alongside the
+Python package so that the skill content and the CLI are always versioned
+together. An agent that installs from PyPI gets the matching skill; an agent
+that upgrades the CLI automatically gets the updated skill.
+
+The alternative — distributing the skill separately via `npx skills add
+rbross-hpc/ref-checker` (pulling from GitHub) — was evaluated and rejected
+because the skill version and the installed executable can drift independently.
+
+### Package layout
+
+The canonical skill location is inside the Python package so that
+`importlib.resources` can resolve it whether the package is installed normally
+or as a zip (wheel):
+
+```
+ref_checker/skills/reference-checking/SKILL.md
+```
+
+This path is included in the wheel via `pyproject.toml`:
+
+```toml
+[tool.setuptools.package-data]
+ref_checker = ["skills/reference-checking/**/*"]
+```
+
+No `__init__.py` is needed inside `skills/` — access is via
+`importlib.resources.files("ref_checker").joinpath("skills/reference-checking/…")`.
+
+### SKILL.md frontmatter
+
+`SKILL.md` begins with YAML frontmatter as required by the [OpenCode Agent
+Skills spec](https://opencode.ai/docs/skills/):
+
+```yaml
+---
+name: reference-checking
+description: ...
+license: BSD-3-Clause
+metadata:
+  audience: researchers, editors
+  tool: ref-checker
+---
+```
+
+`name` must match the containing directory name (`reference-checking`). The
+`compatibility` field is intentionally omitted — the skill is harness-neutral
+and works with any harness that supports the standard directory layout
+(`.opencode/skills/`, `.claude/skills/`, `.agents/skills/`).
+
+### CLI surface (`ref_checker/cli/skill.py`)
+
+Two subcommands are exposed:
+
+| Command | Behaviour |
+|---|---|
+| `ref-checker skill show` | Reads `SKILL.md` via `importlib.resources` and writes to stdout. |
+| `ref-checker skill export PATH [--force]` | Copies the complete skill directory tree to `PATH` using `shutil.copytree(dirs_exist_ok=True)`. Refuses if `PATH` is non-empty unless `--force` is given (which first removes `PATH`). |
+
+`show` is suitable for piping or redirection. `export` is the recommended
+installation path — the user chooses the harness-specific destination and the
+CLI does not auto-detect or modify any harness configuration.
+
+### Schema sync obligation
+
+The `SKILL.md` **Reference JSON schema** section documents the same fields as
+`_SYSTEM_PROMPT` in `ref_checker/extract.py` and the `Reference` dataclass.
+These are two copies of the same truth. A comment at the top of `_SYSTEM_PROMPT`
+in `extract.py` documents this obligation. When adding or removing a field,
+update both. The test `test_show_contains_schema_section` in
+`tests/test_skill_cli.py` asserts that the section heading is present, locking
+in the structure.
 
 ---
 

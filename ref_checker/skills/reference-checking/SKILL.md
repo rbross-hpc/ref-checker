@@ -1,19 +1,32 @@
+---
+name: reference-checking
+description: Verify bibliographic references in an academic paper against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. Accepts either a PDF (references extracted via LLM) or a JSON list you supply directly. Use when the user asks to audit, check, or find real sources for citations.
+license: BSD-3-Clause
+metadata:
+  audience: researchers, editors
+  tool: ref-checker
+---
+
 # Skill: Reference Checking with ref-checker
 
 Use this skill when the user asks you to verify, audit, or check the
-bibliographic references in an academic paper PDF, or when they provide a list
-of references and ask whether they are real, findable, or correctly cited.
+bibliographic references in an academic paper — whether they hand you a PDF,
+paste a reference list, or have a pre-structured JSON file.
 
 ## What ref-checker does
 
-`ref-checker` is a CLI tool that:
+`ref-checker` verifies bibliographic references against live scholarly
+databases. It accepts two equivalent input modes:
 
-1. Extracts every bibliographic reference from a PDF (via an LLM).
-2. Looks each reference up across **OpenAlex**, **CrossRef**, **DBLP**,
-   **Semantic Scholar**, and **arXiv** in priority order.
-3. Performs URL liveness checks for GitHub repositories and web resources.
-4. Prints color-coded results (**OK** / **CLOSEST** / **NO MATCH**) with
-   similarity scores and notes for each reference.
+- **PDF input** — extracts every reference via an LLM, then looks each one up.
+- **JSON input** — takes a list of references you provide directly, skipping
+  extraction entirely. No PDF or LLM required.
+
+For either input, it looks up each reference across **OpenAlex**, **CrossRef**,
+**DBLP**, **Semantic Scholar**, and **arXiv** in priority order, and performs
+URL liveness checks for GitHub repositories and web resources. Results are
+printed color-coded (**OK** / **CLOSEST** / **NO MATCH**) with similarity
+scores and notes for each reference.
 
 Progress and credential status are written to stderr. The reference report is
 written to stdout and can be redirected cleanly.
@@ -32,7 +45,7 @@ Verify: `ref-checker --help`
 
 | Variable | Required | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | **Yes** (for `check`/`extract`) | Key for the LLM used to extract references |
+| `OPENAI_API_KEY` | **Yes, for PDF input only** | Key for the LLM used to extract references from a PDF. Not needed when using `--refs-json`. |
 | `OPENAI_BASE_URL` | No | Override base URL (e.g. local proxy) |
 | `OPENAI_MODEL` | No | Model name (default: `gpt-4o-mini`) |
 | `OPENALEX_MAILTO` | Recommended | Your email — enables the polite pool for OpenAlex/CrossRef |
@@ -43,7 +56,7 @@ with sensitive values masked as `<set>`.
 
 ## Common invocations
 
-### Check a PDF
+### Check references from a PDF
 
 ```bash
 ref-checker check paper.pdf
@@ -53,25 +66,26 @@ Extracts references via LLM (requires `OPENAI_API_KEY`), then looks up each
 one. Writes a refs cache (`paper.refs.json`) and a results sidecar
 (`paper.results.json`) next to the PDF on first run.
 
-### Check from a pre-extracted refs JSON (no PDF needed)
+### Check references from a JSON list
 
 ```bash
-ref-checker check --refs-json paper.refs.json
+ref-checker check --refs-json refs.json
 ```
 
-Skips PDF extraction entirely. Useful when you have already extracted
-references or want to construct them yourself. See the **Reference JSON
-schema** section below for the expected format.
+Looks up references directly from a JSON file — no PDF and no LLM required.
+See the **Reference JSON schema** section below for the expected format. The
+result sidecar defaults to `<refs-stem>.results.json`.
 
 ### Save results to a file
 
 ```bash
 ref-checker check paper.pdf > results.txt
+ref-checker check --refs-json refs.json > results.txt
 ```
 
 Progress goes to stderr; the report goes to stdout.
 
-### Extract references only (no lookup)
+### Extract references from a PDF only (no lookup)
 
 ```bash
 ref-checker extract paper.pdf
@@ -79,7 +93,8 @@ ref-checker extract paper.pdf
 
 Writes `paper.refs.md` (numbered raw text) and `paper.refs.json` (structured
 JSON) alongside the PDF. Running `extract` first primes the refs cache for a
-subsequent `check` run.
+subsequent `check` run, and produces a JSON file you can inspect or edit before
+passing back via `--refs-json`.
 
 ### Query a single source directly
 
@@ -99,11 +114,13 @@ command automatically resumes: OK references are replayed from the sidecar
 instantly; failures are re-queried. Use `--no-resume` to force a full re-run.
 
 ```bash
-ref-checker check paper.pdf           # first run
-ref-checker check paper.pdf           # resumes, skips OK refs
-ref-checker check paper.pdf --no-resume   # re-queries everything
-ref-checker check paper.pdf --retry-closest  # also re-queries CLOSEST refs
+ref-checker check paper.pdf            # first run
+ref-checker check paper.pdf            # resumes, skips OK refs
+ref-checker check paper.pdf --no-resume    # re-queries everything
+ref-checker check paper.pdf --retry-closest   # also re-queries CLOSEST refs
 ```
+
+The same resume behaviour applies to `--refs-json` runs.
 
 ## Interpreting results
 
@@ -212,21 +229,23 @@ and more reliable than title search.
 
 ## Workflow guidance
 
-1. **Confirm `OPENAI_API_KEY` is set** before running `check` or `extract`.
-   Recommend setting `OPENALEX_MAILTO` to your email for the polite pool.
+1. **Choose your input mode:**
+   - If the user provides a **PDF**, run `ref-checker check paper.pdf`.
+     Requires `OPENAI_API_KEY`.
+   - If the user **pastes or provides a reference list**, construct a JSON file
+     using the schema above and run `ref-checker check --refs-json refs.json`.
+     `OPENAI_API_KEY` is not needed.
+   - After a PDF `check` or `extract` run, `<stem>.refs.json` is written
+     automatically — you can pass it back via `--refs-json` on later runs.
 
-2. **For a PDF the user provides**, run `ref-checker check paper.pdf` and
-   show the user the stdout output.
+2. **Recommend setting `OPENALEX_MAILTO`** to the user's email before any run,
+   for the OpenAlex/CrossRef polite pool.
 
-3. **For a list of references the user pastes**, construct a `--refs-json`
-   file using the schema above and run `ref-checker check --refs-json`.
-   You do not need `OPENAI_API_KEY` for this path.
-
-4. **Triage results**: OK references need no action. CLOSEST references
+3. **Triage results**: OK references need no action. CLOSEST references
    warrant a closer look (wrong edition, pre-print vs. published, minor title
    variation). NO MATCH references may be fabricated, retracted, or simply
    unfound — investigate further.
 
-5. **For incomplete runs** (Semantic Scholar exhausted, network errors), re-run
+4. **For incomplete runs** (Semantic Scholar exhausted, network errors), re-run
    the same command — resume picks up where it left off. Use `--retry-all` or
    `--retry-closest` to broaden what gets re-queried.

@@ -1,10 +1,13 @@
 # ref-checker
 
-Verify the references in an academic paper against live bibliographic databases.
-Given a PDF, `ref-checker` extracts every reference (via an LLM), then looks
-each one up across **OpenAlex**, **CrossRef**, **DBLP**, **Semantic Scholar**, and **arXiv**
-in sequence, and performs URL liveness checks for software repositories and web
-resources. Results are printed in citation order with color-coded status.
+Verify bibliographic references in an academic paper against live scholarly
+databases. `ref-checker` accepts two equivalent inputs — a **PDF** (references
+extracted via LLM) or a **JSON list** you supply directly — and looks each
+reference up across **OpenAlex**, **CrossRef**, **DBLP**, **Semantic Scholar**,
+and **arXiv** in sequence, performing URL liveness checks for software
+repositories and web resources. Results are printed in citation order with
+color-coded status. It also ships a bundled [Agent Skill](https://opencode.ai/docs/skills/)
+for AI coding assistants.
 
 For a detailed description of the design and implementation, see [PLAN.md](PLAN.md).
 
@@ -47,7 +50,7 @@ Set these before running:
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | **Yes** (for `check`/`extract`) | Key for the LLM used to extract references from the PDF |
+| `OPENAI_API_KEY` | **Yes, for PDF input** | Key for the LLM used to extract references from a PDF. Not needed when using `--refs-json`. |
 | `OPENAI_BASE_URL` | No | Override the OpenAI-compatible base URL (e.g. for a local proxy) |
 | `OPENAI_MODEL` | No | Model name to use (default: `gpt-4o-mini`) |
 | `OPENALEX_MAILTO` | Recommended | Your email — enables the OpenAlex/CrossRef polite pool for faster, more reliable API access |
@@ -57,30 +60,34 @@ Sensitive values are displayed as `<set>` in the credential summary at startup.
 
 ## Usage
 
-### Check all references in a paper
+### Check references from a PDF
 
 ```bash
 ref-checker check paper.pdf
 ```
 
-Skip PDF extraction by supplying a pre-extracted refs JSON file. The PDF
-argument is optional in this case — omit it entirely or pass one as a
-label (it will not be read; a warning is printed if supplied):
+Extracts references via LLM (requires `OPENAI_API_KEY`), then looks up each
+one against all sources. Writes a refs cache (`paper.refs.json`) and a results
+sidecar (`paper.results.json`) next to the PDF on first run.
+
+### Check references from a JSON list
 
 ```bash
-ref-checker check --refs-json paper.refs.json
-ref-checker check --refs-json paper.refs.json --results-json out.json
+ref-checker check --refs-json refs.json
+ref-checker check --refs-json refs.json --results-json out.json
 ```
 
-The refs JSON must be a bare JSON array of ref dicts, each with at minimum
-a `title` field. All other fields (`index`, `raw`, `authors`, `year`, `doi`,
-`arxiv_id`, `venue`, `url`) are optional. `index` defaults to 0 and is
-auto-sequenced from the list position.
+Looks up references directly from a JSON file — no PDF and no `OPENAI_API_KEY`
+required. The refs JSON must be a bare JSON array of ref dicts, each with at
+minimum a `title` field. All other fields (`index`, `raw`, `authors`, `year`,
+`doi`, `arxiv_id`, `venue`, `url`) are optional. `index` defaults to 0 and is
+auto-sequenced from the list position. The result sidecar defaults to
+`<refs-stem>.results.json`.
 
 Options:
 
 ```
---refs-json PATH          Load references from a JSON array and skip PDF extraction.
+--refs-json PATH          Load references from a JSON array; skip PDF extraction.
                           PDF argument becomes optional; a warning is printed if supplied.
 --refs-cache PATH         Refs cache file (default: <pdf-stem>.refs.json next to PDF)
 --no-refs-cache           Disable refs cache — always extract, never write
@@ -104,9 +111,9 @@ Options:
 
 ### Cached reference extraction
 
-Every `check` run automatically writes `<pdf-stem>.refs.json` next to the PDF
-after LLM extraction. On re-run, the cache is loaded instead of calling the LLM
-again — saving ~30–120 seconds per paper:
+Every `check` run on a PDF automatically writes `<pdf-stem>.refs.json` next to
+the PDF after LLM extraction. On re-run, the cache is loaded instead of calling
+the LLM again — saving ~30–120 seconds per paper:
 
 ```bash
 ref-checker check paper.pdf          # extracts + writes cache
@@ -117,13 +124,15 @@ ref-checker check paper.pdf --re-extract   # forces re-extraction
 The cache is validated against the PDF's SHA-256 hash. If the PDF changes, the
 cache is automatically invalidated and re-extracted. The `extract` subcommand
 writes the same format, so running `extract` first primes the cache for `check`.
+The resulting `<stem>.refs.json` can also be passed directly to
+`--refs-json` for editing or re-checking.
 
 ### Resuming interrupted or incomplete runs
 
-Every `check` run writes a `<pdf-stem>.results.json` sidecar file next to the
-PDF. Resume is **on by default** — re-runs automatically skip references that
-already resolved cleanly and retry only those that failed (NO MATCH, exhausted
-sources, dead URLs):
+Every `check` run writes a results sidecar file (`<pdf-stem>.results.json` for
+PDF input; `<refs-stem>.results.json` for JSON input). Resume is **on by
+default** — re-runs automatically skip references that already resolved cleanly
+and retry only those that failed (NO MATCH, exhausted sources, dead URLs):
 
 ```bash
 ref-checker check paper.pdf          # first run: queries all, writes sidecar
@@ -138,10 +147,11 @@ are replayed from the sidecar instantly and failed refs are re-queried.
 If the reference list changes (e.g., after `--re-extract`), the sidecar detects
 the mismatch via a content hash and falls back to a full re-run.
 
-### Extract references only
+### Extract references from a PDF only
 
 Writes `<stem>.refs.md` (numbered raw text) and `<stem>.refs.json` (structured
-data) alongside the PDF, or to `--out-dir`.
+data) alongside the PDF, or to `--out-dir`. The JSON output can be passed
+directly to `--refs-json` for subsequent runs.
 
 ```bash
 ref-checker extract paper.pdf
@@ -261,19 +271,22 @@ At the end of a run, a query summary is printed to stderr:
 
 ## How it works
 
-1. **PDF extraction** — text is extracted with `pypdf` (falling back to
-   `pdfplumber`). Common PDF artifacts are repaired: hyphenated line breaks
-   (e.g. `frame-\nwork` → `framework`, protecting URL hyphens) and split-word
-   glyphs (e.g. `V ector` → `Vector`). The references section is located by
-   heading detection; appendices and acknowledgements following the references
-   are trimmed before sending to the LLM.
+1. **Input** — references come from one of two equivalent sources:
+   - **PDF**: text is extracted with `pypdf` (falling back to `pdfplumber`).
+     Common PDF artifacts are repaired: hyphenated line breaks
+     (e.g. `frame-\nwork` → `framework`, protecting URL hyphens) and split-word
+     glyphs (e.g. `V ector` → `Vector`). The references section is located by
+     heading detection; appendices and acknowledgements following the references
+     are trimmed before sending to the LLM.
+   - **JSON list**: a bare JSON array supplied via `--refs-json`, bypassing
+     extraction entirely.
 
-2. **LLM parsing** — the narrowed text is sent to an OpenAI-compatible model
-   which returns structured JSON (`title`, `authors`, `year`, `doi`,
-   `arxiv_id`, `venue`, `url`) for each reference. The prompt explains that
-   the input is PDF-extracted text and may contain artifacts. Up to 3 retries
-   on failure. A regex post-pass backfills any DOIs, arXiv IDs, GitHub URLs,
-   and general URLs the LLM missed.
+2. **LLM parsing** (PDF path only) — the narrowed text is sent to an
+   OpenAI-compatible model which returns structured JSON (`title`, `authors`,
+   `year`, `doi`, `arxiv_id`, `venue`, `url`) for each reference. The prompt
+   explains that the input is PDF-extracted text and may contain artifacts. Up
+   to 3 retries on failure. A regex post-pass backfills any DOIs, arXiv IDs,
+   GitHub URLs, and general URLs the LLM missed.
 
 3. **Multi-source lookup** — sources are tried in priority order:
    - GitHub liveness first (if a GitHub URL is present — skips scholarly
@@ -290,10 +303,10 @@ At the end of a run, a query summary is printed to stderr:
 
 ## Agent Skills
 
-`ref-checker` ships a bundled [Agent Skill](https://opencode.ai) that teaches
-AI coding assistants how to use the tool. Because the skill is distributed with
-the Python package, the skill version is always guaranteed to match the
-installed CLI.
+`ref-checker` ships a bundled [Agent Skill](https://opencode.ai/docs/skills/)
+that teaches AI coding assistants how to use the tool. Because the skill is
+distributed with the Python package, the skill version is always guaranteed to
+match the installed CLI.
 
 ### Inspect the bundled skill
 
@@ -328,6 +341,23 @@ Common harness locations:
 | OpenCode | `.opencode/skills/reference-checking/` |
 | Claude Code | `.claude/skills/reference-checking/` |
 | Generic | `.agents/skills/reference-checking/` |
+
+### Contributing to the bundled skill
+
+If you change the reference JSON schema in `ref_checker/extract.py` (the
+`_SYSTEM_PROMPT` constant or the `Reference` dataclass), also update the
+**Reference JSON schema** section in
+`ref_checker/skills/reference-checking/SKILL.md`. A comment at the top of
+`_SYSTEM_PROMPT` in `extract.py` documents this obligation.
+
+The tests in `tests/test_skill_cli.py` assert that specific strings are present
+in `SKILL.md` — including the section heading `"Reference JSON schema"` and the
+status labels `"OK"`, `"CLOSEST"`, `"NO MATCH"`. If you rename these sections,
+update the corresponding test assertions.
+
+The `SKILL.md` frontmatter (`name`, `description`) is required by the
+[OpenCode Agent Skills spec](https://opencode.ai/docs/skills/). Do not remove
+it.
 
 ## License
 
