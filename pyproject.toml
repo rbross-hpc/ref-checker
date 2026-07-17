@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name            = "ref-checker"
 version         = "0.1.0"
-description     = "Check paper references against OpenAlex, CrossRef, Semantic Scholar, and arXiv"
+description     = "Verify bibliographic references against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv"
 readme          = "README.md"
 requires-python = ">=3.10"
-license         = { text = "BSD-3-Clause" }
+license         = "BSD-3-Clause"
 authors         = [{ name = "Robert Ross", email = "rross@anl.gov" }]
 dependencies = [
     "requests>=2.31",
