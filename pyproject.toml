@@ -26,3 +26,6 @@ ref-checker = "ref_checker.cli.main:main"
 [tool.setuptools.packages.find]
 where   = ["."]
 include = ["ref_checker*"]
+
+[tool.setuptools.package-data]
+ref_checker = ["skills/reference-checking/**/*"]

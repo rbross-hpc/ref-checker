@@ -288,6 +288,47 @@ At the end of a run, a query summary is printed to stderr:
    SequenceMatcher ratio. A penalty of 0.10 is applied when the reference year
    and candidate year are both known and differ.
 
+## Agent Skills
+
+`ref-checker` ships a bundled [Agent Skill](https://opencode.ai) that teaches
+AI coding assistants how to use the tool. Because the skill is distributed with
+the Python package, the skill version is always guaranteed to match the
+installed CLI.
+
+### Inspect the bundled skill
+
+```bash
+ref-checker skill show
+```
+
+Prints the full `SKILL.md` to stdout. You can redirect it:
+
+```bash
+ref-checker skill show > SKILL.md
+```
+
+### Export the skill for your harness
+
+```bash
+ref-checker skill export .agents/skills/reference-checking
+```
+
+Copies the complete skill directory (including any supporting files) to the
+path you choose. The destination must not exist or must be empty; use
+`--force` to overwrite:
+
+```bash
+ref-checker skill export --force .agents/skills/reference-checking
+```
+
+Common harness locations:
+
+| Harness | Path |
+|---|---|
+| OpenCode | `.opencode/skills/reference-checking/` |
+| Claude Code | `.claude/skills/reference-checking/` |
+| Generic | `.agents/skills/reference-checking/` |
+
 ## License
 
 BSD 3-Clause. Copyright (c) 2026, UChicago Argonne, LLC, Argonne National Laboratory.

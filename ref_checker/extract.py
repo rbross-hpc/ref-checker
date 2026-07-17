@@ -45,6 +45,9 @@ _SKIP_URL_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# NOTE: The field descriptions below are mirrored in
+# ref_checker/skills/reference-checking/SKILL.md ("Reference JSON schema").
+# Keep both in sync when adding or changing fields.
 _SYSTEM_PROMPT = """\
 You are a reference-extraction assistant. The user will provide text that was \
 automatically extracted from a PDF of an academic paper using a PDF-to-text \

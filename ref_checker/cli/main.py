@@ -8,6 +8,7 @@ import sys
 
 from .. import check, extract, pdf
 from ..sources import arxiv, crossref, dblp, openalex, semanticscholar
+from . import skill as skill_mod
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _build_check_parser(sub)
     _build_extract_parser(sub)
     _build_lookup_parser(sub)
+    _build_skill_parser(sub)
 
     return p
 
@@ -81,6 +83,28 @@ def _build_extract_parser(sub) -> None:
                    help="Output directory (default: same directory as PDF)")
     p.add_argument("--tail-pages", type=int, default=5, metavar="N",
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
+
+
+def _build_skill_parser(sub) -> None:
+    p = sub.add_parser(
+        "skill",
+        help="Show or export the bundled Agent Skill for ref-checker.",
+    )
+    ssub = p.add_subparsers(dest="skill_action", required=True, metavar="ACTION")
+
+    ssub.add_parser(
+        "show",
+        help="Print the bundled SKILL.md to stdout.",
+    )
+
+    ep = ssub.add_parser(
+        "export",
+        help="Copy the complete skill directory to PATH.",
+    )
+    ep.add_argument("path", metavar="PATH",
+                    help="Destination directory to write the skill into.")
+    ep.add_argument("--force", action="store_true",
+                    help="Overwrite PATH if it already exists and is non-empty.")
 
 
 def _build_lookup_parser(sub) -> None:
@@ -340,3 +364,5 @@ def main() -> None:
         run_extract(args)
     elif args.command == "lookup":
         run_lookup(args)
+    elif args.command == "skill":
+        skill_mod.run_skill(args)
