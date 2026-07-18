@@ -211,17 +211,45 @@ class TestWriteLoad:
         assert entries == {}
         assert hash_ok is False
 
-    def test_v1_sidecar_is_rejected(self, tmp_path):
-        """v1 sidecars must be treated as invalid (hard-reject, no upgrade)."""
-        path = tmp_path / "v1.json"
+    @pytest.mark.parametrize("old_version", [1, 2])
+    def test_outdated_schema_version_is_rejected(self, tmp_path, old_version):
+        """Outdated schema versions must be hard-rejected (no upgrade)."""
+        path = tmp_path / f"v{old_version}.json"
         path.write_text(json.dumps({
-            "schema_version": 1,
+            "schema_version": old_version,
             "refs_hash": "x",
             "references": {"1": {"ref": {}, "result": {"status": "OK"}}},
         }))
         entries, hash_ok = sidecar.load(path, [_ref(1)])
         assert entries == {}
         assert hash_ok is False
+
+    @pytest.mark.parametrize("old_version", [1, 2])
+    def test_outdated_schema_version_emits_warning(self, tmp_path, capsys, old_version):
+        """Outdated but recognized schema versions emit a WARNING on load."""
+        path = tmp_path / f"v{old_version}.json"
+        path.write_text(json.dumps({
+            "schema_version": old_version,
+            "refs_hash": "x",
+            "references": {},
+        }))
+        sidecar.load(path, [_ref(1)])
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert f"v{old_version}" in err
+        assert str(path) in err
+
+    def test_unknown_schema_version_is_silent(self, tmp_path, capsys):
+        """Unrecognized schema versions are rejected silently (could be garbage)."""
+        path = tmp_path / "unknown.json"
+        path.write_text(json.dumps({
+            "schema_version": 99,
+            "refs_hash": "x",
+            "references": {},
+        }))
+        sidecar.load(path, [_ref(1)])
+        err = capsys.readouterr().err
+        assert "WARNING" not in err
 
     def test_atomic_write_no_tmp_leftover(self, tmp_path):
         refs = [_ref(1)]

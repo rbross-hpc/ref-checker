@@ -9,7 +9,8 @@ Deferred work items — not scheduled, captured so they aren't lost.
 `PLAN.md` lines 362–380 describe the results sidecar but predate the
 error-handling / smart-re-run work. Update to reflect current reality:
 
-- `schema_version` is now `2` (v1 is hard-rejected on load).
+- `schema_version` is now `3` (v1 and v2 are hard-rejected on load; a
+  WARNING is emitted when a recognized-but-outdated version is discarded).
 - Each `references[i].result` carries a `per_source` map keyed by source name
   (`openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, `arxiv`,
   `github`, `url`). Entry shape:
