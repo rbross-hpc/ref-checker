@@ -15,6 +15,7 @@ from typing import Any
 import requests
 
 from ..similarity import title_ratio
+from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "osti"
 
@@ -115,6 +116,7 @@ def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
         return None, None
     if resp.status_code in (404, 410):
         return None, None
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     return None, None
 
@@ -133,5 +135,6 @@ def search_by_title(title: str) -> tuple[dict | None, float | None]:
         return _summarize(best_record), best_sim
     if resp.status_code in (404, 410):
         return None, None
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     return None, None

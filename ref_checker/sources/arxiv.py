@@ -8,6 +8,7 @@ from typing import Any
 import requests
 
 from ..similarity import title_ratio
+from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "arxiv"
 
@@ -66,6 +67,7 @@ def get_by_arxiv_id(arxiv_id: str) -> tuple[dict | None, float | None]:
         params={"id_list": bare, "max_results": 1},
         timeout=30,
     )
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     try:
         root = ET.fromstring(resp.text)
@@ -86,6 +88,7 @@ def search_by_title(
         params={"search_query": search_query, "max_results": 5},
         timeout=30,
     )
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     try:
         root = ET.fromstring(resp.text)

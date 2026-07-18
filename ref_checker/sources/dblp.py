@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 from ..similarity import title_ratio
+from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "dblp"
 
@@ -84,6 +85,7 @@ def search_by_title(title: str) -> tuple[dict | None, float | None]:
             if resp.status_code == 503:
                 last_exc = requests.HTTPError(f"503 for {base}", response=resp)
                 continue
+            raise_for_rate_limit(resp, SOURCE_NAME)
             resp.raise_for_status()
             try:
                 data = resp.json()
