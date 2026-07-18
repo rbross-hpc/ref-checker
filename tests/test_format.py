@@ -2,7 +2,12 @@
 import pytest
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
-from ref_checker.format import format_result, _format_citation, _format_ref_header
+from ref_checker.format import (
+    _format_citation,
+    _format_ref_header,
+    _osti_id_if_confident,
+    format_result,
+)
 
 
 def _ref(**kwargs):
@@ -210,3 +215,236 @@ class TestFormatResult:
         )
         out = format_result(ref, result, self.MIN_MATCH)
         assert "DOI title:" in out
+
+
+# --------------------------------------------------------------------------
+# --with-osti-id: _osti_id_if_confident helper
+# --------------------------------------------------------------------------
+
+
+def _osti_entry(status, score=None, ext_id="1234567", cand_year=None):
+    return {
+        "status": status,
+        "queried_by": ["doi"] if status == "hit_id" else ["title"],
+        "score": score,
+        "summary": {
+            "source": "osti",
+            "title": "A DOE Report",
+            "external_id": ext_id,
+            "year": cand_year,
+        },
+        "note": None,
+    }
+
+
+class TestOstiIdIfConfident:
+    def test_hit_id_returns_id(self):
+        ref = _ref(year=2020)
+        result = LookupResult(per_source={"osti": _osti_entry("hit_id")})
+        assert _osti_id_if_confident(ref, result) == "1234567"
+
+    def test_hit_title_high_score_returns_id(self):
+        ref = _ref(year=2020)
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=0.95, cand_year=2020),
+        })
+        assert _osti_id_if_confident(ref, result) == "1234567"
+
+    def test_hit_title_below_threshold_returns_none(self):
+        ref = _ref(year=2020)
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=0.85, cand_year=2020),
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_hit_title_way_below_returns_none(self):
+        ref = _ref(year=2020)
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=0.70, cand_year=2020),
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_year_penalty_pushes_below_threshold(self):
+        ref = _ref(year=2020)
+        # raw 0.95 - 0.10 year penalty = 0.85 → below 0.90 threshold
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=0.95, cand_year=2021),
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_year_penalty_still_above_threshold(self):
+        ref = _ref(year=2020)
+        # raw 1.00 - 0.10 = 0.90, exactly at threshold → shown
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=1.00, cand_year=2021),
+        })
+        assert _osti_id_if_confident(ref, result) == "1234567"
+
+    def test_not_found_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={
+            "osti": {"status": "not_found", "queried_by": ["title"],
+                     "score": None, "summary": None, "note": None},
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_error_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={
+            "osti": {"status": "error", "queried_by": ["title"],
+                     "score": None, "summary": None, "note": "retries exhausted"},
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_disabled_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={
+            "osti": {"status": "disabled", "queried_by": [],
+                     "score": None, "summary": None,
+                     "note": "session circuit breaker"},
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_missing_osti_entry_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={})
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_missing_external_id_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_id", ext_id=None),
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+    def test_hit_title_no_score_returns_none(self):
+        ref = _ref()
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=None),
+        })
+        assert _osti_id_if_confident(ref, result) is None
+
+
+# --------------------------------------------------------------------------
+# --with-osti-id: format_result integration
+# --------------------------------------------------------------------------
+
+
+class TestFormatResultWithOstiId:
+    MIN_MATCH = 0.80
+
+    def _ok_result_osti_wins(self):
+        r = LookupResult(
+            id_confirmed=True, display_score=0.99,
+            best_source="osti",
+            best_summary={"doi": "10.2172/1234567", "title": "A DOE Report",
+                          "url": "https://osti.gov/biblio/1234567",
+                          "external_id": "1234567", "year": 2020},
+            per_source={"osti": _osti_entry("hit_id")},
+        )
+        return r
+
+    def _ok_result_other_source_wins_osti_hit_id(self):
+        # OpenAlex won; OSTI also had a DOI hit
+        r = LookupResult(
+            id_confirmed=True, display_score=0.99,
+            best_source="openalex",
+            best_summary={"doi": "10.2172/1234567", "title": "A DOE Report",
+                          "url": "https://openalex.org/W1", "year": 2020},
+            per_source={
+                "openalex": {"status": "hit_id", "queried_by": ["doi"],
+                             "score": 1.0, "summary": {"doi": "10.2172/1234567"},
+                             "note": None},
+                "osti": _osti_entry("hit_id"),
+            },
+        )
+        return r
+
+    def test_no_flag_no_osti_suffix(self):
+        ref = _ref()
+        out = format_result(ref, self._ok_result_osti_wins(), self.MIN_MATCH)
+        assert "OSTI:" not in out
+
+    def test_flag_ok_line_osti_wins(self):
+        ref = _ref()
+        out = format_result(ref, self._ok_result_osti_wins(), self.MIN_MATCH,
+                            with_osti_id=True)
+        assert "(OSTI: 1234567)" in out
+
+    def test_flag_ok_line_other_source_wins(self):
+        ref = _ref()
+        out = format_result(ref, self._ok_result_other_source_wins_osti_hit_id(),
+                            self.MIN_MATCH, with_osti_id=True)
+        # Even though OpenAlex won, OSTI ID is still shown since OSTI hit confidently
+        assert "(OSTI: 1234567)" in out
+        assert "[source: openalex]" in out
+
+    def test_flag_closest_line_shows_osti(self):
+        ref = _ref()
+        r = LookupResult(
+            display_score=0.85,
+            best_source="crossref",
+            best_summary={"doi": None, "title": "Something Close",
+                          "url": "https://x.com", "authors": [], "year": 2020,
+                          "venue": None},
+            per_source={
+                "crossref": {"status": "hit_title", "queried_by": ["title"],
+                             "score": 0.85,
+                             "summary": {"title": "Something Close"},
+                             "note": None},
+                "osti": _osti_entry("hit_id"),
+            },
+        )
+        out = format_result(ref, r, self.MIN_MATCH, with_osti_id=True)
+        assert "CLOSEST" in out
+        assert "(OSTI: 1234567)" in out
+
+    def test_flag_no_match_line_shows_osti(self):
+        ref = _ref()
+        r = LookupResult(
+            display_score=0.30,
+            best_source="openalex",
+            best_summary={"title": "Wrong Paper", "url": "https://x.com",
+                          "authors": [], "year": 2020, "venue": None},
+            per_source={
+                "openalex": {"status": "hit_title", "queried_by": ["title"],
+                             "score": 0.30,
+                             "summary": {"title": "Wrong Paper"},
+                             "note": None},
+                "osti": _osti_entry("hit_id"),
+            },
+        )
+        out = format_result(ref, r, self.MIN_MATCH, with_osti_id=True)
+        assert "NO MATCH" in out
+        assert "(OSTI: 1234567)" in out
+
+    def test_flag_no_osti_entry_no_suffix(self):
+        ref = _ref()
+        r = LookupResult(
+            id_confirmed=True, display_score=0.99,
+            best_source="openalex",
+            best_summary={"doi": "10.1/x", "title": "A Paper", "url": None},
+            per_source={
+                "openalex": {"status": "hit_id", "queried_by": ["doi"],
+                             "score": 1.0, "summary": {"doi": "10.1/x"},
+                             "note": None},
+            },
+        )
+        out = format_result(ref, r, self.MIN_MATCH, with_osti_id=True)
+        assert "OSTI:" not in out
+
+    def test_flag_low_confidence_title_no_suffix(self):
+        ref = _ref(year=2020)
+        r = LookupResult(
+            id_confirmed=True, display_score=0.99,
+            best_source="openalex",
+            best_summary={"doi": "10.1/x", "title": "A Paper", "url": None},
+            per_source={
+                "openalex": {"status": "hit_id", "queried_by": ["doi"],
+                             "score": 1.0, "summary": {"doi": "10.1/x"},
+                             "note": None},
+                "osti": _osti_entry("hit_title", score=0.85, cand_year=2020),
+            },
+        )
+        out = format_result(ref, r, self.MIN_MATCH, with_osti_id=True)
+        assert "OSTI:" not in out

@@ -62,9 +62,10 @@ def stub_sources(monkeypatch):
     Tests can override individual functions to inject behavior.
     """
     from ref_checker.sources import (
-        arxiv, crossref, dblp, github, openalex, semanticscholar, url as url_source,
+        arxiv, crossref, dblp, github, openalex, osti, semanticscholar,
+        url as url_source,
     )
-    for src in (openalex, crossref, dblp, semanticscholar, arxiv):
+    for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
         for name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
             if hasattr(src, name):
                 monkeypatch.setattr(src, name, lambda *a, **kw: (None, None))
@@ -73,6 +74,7 @@ def stub_sources(monkeypatch):
     return {
         "openalex": openalex,
         "crossref": crossref,
+        "osti": osti,
         "dblp": dblp,
         "semanticscholar": semanticscholar,
         "arxiv": arxiv,

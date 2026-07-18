@@ -12,9 +12,9 @@ from .extract import Reference
 from .format import format_result
 from .results import LookupResult, _Stats
 from . import sidecar as _sidecar
-from .sources import arxiv, crossref, dblp, github, openalex, semanticscholar, url as url_source
+from .sources import arxiv, crossref, dblp, github, openalex, osti, semanticscholar, url as url_source
 
-_SCHOLARLY_SOURCES = [openalex, crossref, dblp, semanticscholar, arxiv]
+_SCHOLARLY_SOURCES = [openalex, crossref, osti, dblp, semanticscholar, arxiv]
 _LIVENESS_SOURCES = [github, url_source]
 _ALL_SOURCE_NAMES = [s.SOURCE_NAME for s in _SCHOLARLY_SOURCES + _LIVENESS_SOURCES]
 _SCHOLARLY_SOURCE_NAMES = [s.SOURCE_NAME for s in _SCHOLARLY_SOURCES]
@@ -22,6 +22,7 @@ _SCHOLARLY_SOURCE_NAMES = [s.SOURCE_NAME for s in _SCHOLARLY_SOURCES]
 _DEFAULT_DELAYS: dict[str, float] = {
     "openalex": 2.0,
     "crossref": 2.0,
+    "osti": 2.0,
     "dblp": 1.0,
     "semanticscholar": 8.0,
     "arxiv": 3.0,
@@ -431,6 +432,7 @@ def check_references(
     retry_errored: bool = True,
     source_error_threshold: int = SourceHealth.THRESHOLD,
     pdf_name: str = "",
+    with_osti_id: bool = False,
 ) -> str | None:
     """Look up every reference and print a human-readable summary.
 
@@ -545,7 +547,7 @@ def check_references(
                 )
 
             all_results[ref.index] = result
-            print(format_result(ref, result, min_match))
+            print(format_result(ref, result, min_match, with_osti_id=with_osti_id))
             print()
 
             if sidecar is not None:
