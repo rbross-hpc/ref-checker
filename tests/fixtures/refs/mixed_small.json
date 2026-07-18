@@ -1,0 +1,122 @@
+[
+  {
+    "index": 1,
+    "raw": "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., & Polosukhin, I. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.",
+    "title": "Attention Is All You Need",
+    "authors": ["Ashish Vaswani", "Noam Shazeer", "Niki Parmar", "Jakob Uszkoreit", "Llion Jones", "Aidan N. Gomez", "Lukasz Kaiser", "Illia Polosukhin"],
+    "year": 2017,
+    "doi": "10.48550/arXiv.1706.03762",
+    "arxiv_id": "1706.03762",
+    "venue": "Advances in Neural Information Processing Systems",
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 2,
+    "raw": "Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2018). BERT: Pre-training of deep bidirectional transformers for language understanding. arXiv:1810.04805.",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "authors": ["Jacob Devlin", "Ming-Wei Chang", "Kenton Lee", "Kristina Toutanova"],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": "1810.04805",
+    "venue": null,
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 3,
+    "raw": "Pedregosa, F. et al. (2011). Scikit-learn: Machine learning in Python. Journal of Machine Learning Research, 12, 2825-2830.",
+    "title": "Scikit-learn: Machine Learning in Python",
+    "authors": ["Fabian Pedregosa"],
+    "year": 2011,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Journal of Machine Learning Research",
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 4,
+    "raw": "Chen, T., & Guestrin, C. (2016). XGBoost: A scalable tree boosting system. KDD '16.",
+    "title": "XGBoost: A Scalable Tree Boosting System",
+    "authors": ["Tianqi Chen", "Carlos Guestrin"],
+    "year": 2016,
+    "doi": "10.1145/2939672.2939785",
+    "arxiv_id": null,
+    "venue": "KDD",
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 5,
+    "raw": "Kingma, D. P., & Ba, J. (2014). Adam: A method for stochastic optimization. arXiv:1412.6980.",
+    "title": "Adam: A Method for Stochastic Optimization",
+    "authors": ["Diederik P. Kingma", "Jimmy Ba"],
+    "year": 2014,
+    "doi": null,
+    "arxiv_id": "1412.6980",
+    "venue": null,
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 6,
+    "raw": "scikit-learn developers. scikit-learn. https://github.com/scikit-learn/scikit-learn",
+    "title": "scikit-learn",
+    "authors": [],
+    "year": null,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "url": "https://github.com/scikit-learn/scikit-learn",
+    "github_url": null
+  },
+  {
+    "index": 7,
+    "raw": "Wan, D., Gong, Q., Liu, Z., Wang, X., Cao, Q., & Klasky, S. (2026). Scalable foundation models for numerical simulations on HPC platforms. Frontiers in High Performance Computing.",
+    "title": "Scalable foundation models for numerical simulations on HPC platforms",
+    "authors": ["Dali Wang", "Qian Gong", "Zirui Liu", "Xiao Wang", "Qinglei Cao", "Scott Klasky"],
+    "year": 2026,
+    "doi": "10.3389/fhpcp.2026.1778471",
+    "arxiv_id": null,
+    "venue": "Frontiers in High Performance Computing",
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 8,
+    "raw": "Lindstrom, P. Supporting special values in ZFP. Technical report, LLNL.",
+    "title": "Supporting Special Values in ZFP",
+    "authors": ["Peter Lindstrom"],
+    "year": 2023,
+    "doi": "10.2172/2998448",
+    "arxiv_id": null,
+    "venue": null,
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 9,
+    "raw": "Not-a-real-paper. Nonexistent Journal, 9999.",
+    "title": "A Ref That Should Not Be Findable Anywhere",
+    "authors": ["Nobody"],
+    "year": 9999,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Nonexistent Journal",
+    "url": null,
+    "github_url": null
+  },
+  {
+    "index": 10,
+    "raw": "https://example.invalid/not-a-real-url",
+    "title": "URL-only ref pointing at nowhere",
+    "authors": [],
+    "year": null,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "url": "https://example.invalid/not-a-real-url",
+    "github_url": null
+  }
+]

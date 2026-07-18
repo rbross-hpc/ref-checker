@@ -8,6 +8,7 @@ import sys
 
 from .. import check, extract, pdf
 from ..sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
+from . import show as show_mod
 from . import skill as skill_mod
 
 
@@ -21,6 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _build_check_parser(sub)
     _build_extract_parser(sub)
     _build_lookup_parser(sub)
+    _build_show_parser(sub)
     _build_skill_parser(sub)
 
     return p
@@ -99,6 +101,20 @@ def _build_extract_parser(sub) -> None:
                    help="Output directory (default: same directory as PDF)")
     p.add_argument("--tail-pages", type=int, default=5, metavar="N",
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
+
+
+def _build_show_parser(sub) -> None:
+    p = sub.add_parser(
+        "show",
+        help="Re-emit end-of-run output from a saved sidecar or bare refs JSON.",
+    )
+    p.add_argument("path", metavar="PATH",
+                   help="Path to a sidecar (results) JSON or a bare refs JSON.")
+    p.add_argument("--min-match", type=float, default=0.80, metavar="F",
+                   help="Minimum similarity to report as CLOSEST (default: 0.80). "
+                        "Matches the check-time default.")
+    p.add_argument("--with-osti-id", action="store_true",
+                   help="Append '(OSTI: <id>)' when OSTI returned a confident hit.")
 
 
 def _build_skill_parser(sub) -> None:
@@ -385,6 +401,18 @@ def run_lookup(args) -> None:
     print(json.dumps({"summary": summary, "similarity": sim, "source": source}, indent=2))
 
 
+def run_show(args) -> None:
+    from pathlib import Path
+
+    path = Path(args.path).resolve()
+    rc = show_mod.show(
+        path,
+        min_match=args.min_match,
+        with_osti_id=args.with_osti_id,
+    )
+    sys.exit(rc)
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -396,6 +424,8 @@ def main() -> None:
             run_extract(args)
         elif args.command == "lookup":
             run_lookup(args)
+        elif args.command == "show":
+            run_show(args)
         elif args.command == "skill":
             skill_mod.run_skill(args)
     except KeyboardInterrupt:

@@ -1,0 +1,424 @@
+[
+  {
+    "index": 1,
+    "raw": "P. D. Barnes, C. D. Carothers, D. R. Jefferson, and J. M. LaPre. 2013. Warp speed: Executing Time Warp on 1,966,080 cores. In Proc. of the 2013 ACM SIGSIM Conf. on Principles of Advanced Discrete Simulation (PADS) . 327–336.",
+    "title": "Warp speed: Executing Time Warp on 1,966,080 cores",
+    "authors": [
+      "P. D. Barnes",
+      "C. D. Carothers",
+      "D. R. Jefferson",
+      "J. M. LaPre"
+    ],
+    "year": 2013,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proc. of the 2013 ACM SIGSIM Conf. on Principles of Advanced Discrete Simulation (PADS)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 2,
+    "raw": "Kevin A. Brown, Neil McGlohon, Sudheer Chunduri, Eric Borch, Robert B. Ross, Christopher D. Carothers, and Kevin Harms. 2021. A Tunable Implementation of Quality-of-Service Classes for HPC Networks. In ISC High Performance 2021: High Performance Computing (ISC) ((Virtual) Frankfurt, Germany).",
+    "title": "A Tunable Implementation of Quality-of-Service Classes for HPC Networks",
+    "authors": [
+      "Kevin A. Brown",
+      "Neil McGlohon",
+      "Sudheer Chunduri",
+      "Eric Borch",
+      "Robert B. Ross",
+      "Christopher D. Carothers",
+      "Kevin Harms"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ISC High Performance 2021: High Performance Computing (ISC)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 3,
+    "raw": "Center for Computational Innovations. 2019. Artificial intelligence multiprocessing optimized system (AiMOS). cci.rpi.edu. https://cci.rpi.edu/aimos (accessed Dec 13, 2023).",
+    "title": "Artificial intelligence multiprocessing optimized system (AiMOS)",
+    "authors": [],
+    "year": 2019,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "cci.rpi.edu",
+    "github_url": null,
+    "url": "https://cci.rpi.edu/aimos"
+  },
+  {
+    "index": 4,
+    "raw": "Bastien Chopard, Jean-Luc Falcone, Pierre Kunzli, Lourens Veen, and Alfons Hoekstra. 2018. Multiscale Modeling: Recent Progress and Open Questions. Multiscale and Multidiscip. Model. Exp. and Des. 1, 1 (March 2018), 57–68. https://doi.org/10.1007/s41939-017-0006-4",
+    "title": "Multiscale Modeling: Recent Progress and Open Questions",
+    "authors": [
+      "Bastien Chopard",
+      "Jean-Luc Falcone",
+      "Pierre Kunzli",
+      "Lourens Veen",
+      "Alfons Hoekstra"
+    ],
+    "year": 2018,
+    "doi": "10.1007/s41939-017-0006-4",
+    "arxiv_id": null,
+    "venue": "Multiscale and Multidiscip. Model. Exp. and Des.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 5,
+    "raw": "William James Dally and Brian Patrick Towles. 2004. Principles and Practices of Interconnection Networks . Elsevier.",
+    "title": "Principles and Practices of Interconnection Networks",
+    "authors": [
+      "William James Dally",
+      "Brian Patrick Towles"
+    ],
+    "year": 2004,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Elsevier",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 6,
+    "raw": "Samir R. Das and Richard M. Fujimoto. 1993. A Performance Study of the Cancelback Protocol for Time Warp. InProceedings of the Seventh Workshop on Parallel and Distributed Simulation . ACM, San Diego California USA, 135–142. https://doi.org/10.1145/158459.158476",
+    "title": "A Performance Study of the Cancelback Protocol for Time Warp",
+    "authors": [
+      "Samir R. Das",
+      "Richard M. Fujimoto"
+    ],
+    "year": 1993,
+    "doi": "10.1145/158459.158476",
+    "arxiv_id": null,
+    "venue": "Proceedings of the Seventh Workshop on Parallel and Distributed Simulation",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 7,
+    "raw": "M. Giselle Fernández-Godino. Fri Dec 01 00:00:00 EST 2023. Review of Multi-Fidelity Models. ACSE 1, 4 (Fri Dec 01 00:00:00 EST 2023), 351–400. https://doi.org/10.3934/acse.2023015",
+    "title": "Review of Multi-Fidelity Models",
+    "authors": [
+      "M. Giselle Fernández-Godino"
+    ],
+    "year": 2023,
+    "doi": "10.3934/acse.2023015",
+    "arxiv_id": null,
+    "venue": "ACSE",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 8,
+    "raw": "Yu Gu, Yong Liu, and D. Towsley. 2004. On integrating fluid models with packet simulation. In IEEE INFOCOM 2004 , Vol. 4. 2856–2866 vol.4. https://doi.org/10.1109/INFCOM.2004.1354702",
+    "title": "On integrating fluid models with packet simulation",
+    "authors": [
+      "Yu Gu",
+      "Yong Liu",
+      "D. Towsley"
+    ],
+    "year": 2004,
+    "doi": "10.1109/INFCOM.2004.1354702",
+    "arxiv_id": null,
+    "venue": "IEEE INFOCOM 2004",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 9,
+    "raw": "Q. He, M. Ammar, G. Riley, and R. Fujimoto. 2002. Exploiting the predictability of TCP’s steady-state behavior to speed up network simulation. In Proceedings. 10th IEEE International Symposium on Modeling, Analysis and Simulation of Computer and Telecommunications Systems . 101–108. https://doi.org/10.1109/MASCOT.2002.1167066",
+    "title": "Exploiting the predictability of TCP’s steady-state behavior to speed up network simulation",
+    "authors": [
+      "Q. He",
+      "M. Ammar",
+      "G. Riley",
+      "R. Fujimoto"
+    ],
+    "year": 2002,
+    "doi": "10.1109/MASCOT.2002.1167066",
+    "arxiv_id": null,
+    "venue": "10th IEEE International Symposium on Modeling, Analysis and Simulation of Computer and Telecommunications Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 10,
+    "raw": "Yao Kang, Xin Wang, and Zhiling Lan. 2022. Study of Workload Interference with Intelligent Routing on Dragonfly. InProceedings of the International Conference on High Performance Computing, Networking, Storage and Analysis (Dallas, Texas) (SC ’22). Article 20, 14 pages.",
+    "title": "Study of Workload Interference with Intelligent Routing on Dragonfly",
+    "authors": [
+      "Yao Kang",
+      "Xin Wang",
+      "Zhiling Lan"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the International Conference on High Performance Computing, Networking, Storage and Analysis (SC ’22)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 11,
+    "raw": "Yao Kang, Xin Wang, Neil McGlohon, Misbah Mubarak, Sudheer Chunduri, and Zhiling Lan. 2019. Modeling and Analysis of Application Interference on Dragonfly+. In SIGSIM PADS.",
+    "title": "Modeling and Analysis of Application Interference on Dragonfly+",
+    "authors": [
+      "Yao Kang",
+      "Xin Wang",
+      "Neil McGlohon",
+      "Misbah Mubarak",
+      "Sudheer Chunduri",
+      "Zhiling Lan"
+    ],
+    "year": 2019,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SIGSIM PADS",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 12,
+    "raw": "John Kim, Wiliam J. Dally, Steve Scott, and Dennis Abts. 2008. Technology-Driven, Highly-Scalable Dragonfly Topology. In Proceedings of the 35th Annual International Symposium on Computer Architecture (ISCA ’08) . IEEE Computer Society, Washington, DC, USA, 77–88. https://doi.org/10.1109/ISCA.2008.19",
+    "title": "Technology-Driven, Highly-Scalable Dragonfly Topology",
+    "authors": [
+      "John Kim",
+      "Wiliam J. Dally",
+      "Steve Scott",
+      "Dennis Abts"
+    ],
+    "year": 2008,
+    "doi": "10.1109/ISCA.2008.19",
+    "arxiv_id": null,
+    "venue": "Proceedings of the 35th Annual International Symposium on Computer Architecture (ISCA ’08)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 13,
+    "raw": "Patrick Lavin, Jeffrey Young, and Richard Vuduc. 2023. Multifidelity Memory System Simulation in SST. In 9th International Symposium on Memory Systems. Washington, DC, USA.",
+    "title": "Multifidelity Memory System Simulation in SST",
+    "authors": [
+      "Patrick Lavin",
+      "Jeffrey Young",
+      "Richard Vuduc"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "9th International Symposium on Memory Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 14,
+    "raw": "Ting Li, Nathanael Van Vorst, and Jason Liu. 2013. A Rate-Based TCP Traffic Model to Accelerate Network Simulation. SIMULATION 89, 4 (April 2013), 466–480. https://doi.org/10.1177/0037549712469892",
+    "title": "A Rate-Based TCP Traffic Model to Accelerate Network Simulation",
+    "authors": [
+      "Ting Li",
+      "Nathanael Van Vorst",
+      "Jason Liu"
+    ],
+    "year": 2013,
+    "doi": "10.1177/0037549712469892",
+    "arxiv_id": null,
+    "venue": "SIMULATION",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 15,
+    "raw": "Jason Liu. 2007. Parallel Simulation of Hybrid Network Traffic Models. In 21st International Workshop on Principles of Advanced and Distributed Simulation (PADS’07). 141–151. https://doi.org/10.1109/PADS.2007.26",
+    "title": "Parallel Simulation of Hybrid Network Traffic Models",
+    "authors": [
+      "Jason Liu"
+    ],
+    "year": 2007,
+    "doi": "10.1109/PADS.2007.26",
+    "arxiv_id": null,
+    "venue": "21st International Workshop on Principles of Advanced and Distributed Simulation (PADS’07)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 16,
+    "raw": "Neil McGlohon and Christopher D. Carothers. 2021. Toward Unbiased Deterministic Total Ordering of Parallel Simulations with Simultaneous Events. In Proceedings of the Winter Simulation Conference (Phoenix, Arizona) (WSC ’21). IEEE Press.",
+    "title": "Toward Unbiased Deterministic Total Ordering of Parallel Simulations with Simultaneous Events",
+    "authors": [
+      "Neil McGlohon",
+      "Christopher D. Carothers"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the Winter Simulation Conference (WSC ’21)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 17,
+    "raw": "Neil McGlohon, Christopher D. Carothers, K. Scott Hemmert, Michael Levenhagen, Kevin A. Brown, Sudheer Chunduri, and Robert B. Ross. 2021. Exploration of Congestion Control Techniques on Dragonfly-class HPC Networks Through Simulation. In2021 International Workshop on Performance Modeling, Benchmarking and Simulation of High Performance Computer Systems (PMBS) . 40–50. https://doi.org/10.1109/PMBS54543.2021.00010",
+    "title": "Exploration of Congestion Control Techniques on Dragonfly-class HPC Networks Through Simulation",
+    "authors": [
+      "Neil McGlohon",
+      "Christopher D. Carothers",
+      "K. Scott Hemmert",
+      "Michael Levenhagen",
+      "Kevin A. Brown",
+      "Sudheer Chunduri",
+      "Robert B. Ross"
+    ],
+    "year": 2021,
+    "doi": "10.1109/PMBS54543.2021.00010",
+    "arxiv_id": null,
+    "venue": "2021 International Workshop on Performance Modeling, Benchmarking and Simulation of High Performance Computer Systems (PMBS)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 18,
+    "raw": "Misbah Mubarak, Christopher D Carothers, Robert B Ross, and Philip H Carns. 2017. Enabling Parallel Simulation of Large-Scale HPC Network Systems. IEEE Trans. Parallel Distrib. Syst. 28, 1 (2017), 87–100.",
+    "title": "Enabling Parallel Simulation of Large-Scale HPC Network Systems",
+    "authors": [
+      "Misbah Mubarak",
+      "Christopher D Carothers",
+      "Robert B Ross",
+      "Philip H Carns"
+    ],
+    "year": 2017,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IEEE Trans. Parallel Distrib. Syst.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 19,
+    "raw": "Nikos Nikoleris, Lieven Eeckhout, Erik Hagersten, and Trevor E. Carlson. 2019. Directed Statistical Warming through Time Traveling. InProceedings of the 52nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’52) . Association for Computing Machinery, New York, NY, USA, 1037–1049. https://doi.org/10.1145/3352460.3358264",
+    "title": "Directed Statistical Warming through Time Traveling",
+    "authors": [
+      "Nikos Nikoleris",
+      "Lieven Eeckhout",
+      "Erik Hagersten",
+      "Trevor E. Carlson"
+    ],
+    "year": 2019,
+    "doi": "10.1145/3352460.3358264",
+    "arxiv_id": null,
+    "venue": "Proceedings of the 52nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’52)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 20,
+    "raw": "Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito, Martin Raison, Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, Soumith Chintala, H. Wallach, H. Larochelle, A. Beygelzimer, F. d’Alché-Buc, E. Fox, and R. Garnett. 2019. PyTorch: An Imperative Style, High-Performance Deep Learning Library. Curran Associates, Inc.. , 8024–8035 pages.",
+    "title": "PyTorch: An Imperative Style, High-Performance Deep Learning Library",
+    "authors": [
+      "Adam Paszke",
+      "Sam Gross",
+      "Francisco Massa",
+      "Adam Lerer",
+      "James Bradbury",
+      "Gregory Chanan",
+      "Trevor Killeen",
+      "Zeming Lin",
+      "Natalia Gimelshein",
+      "Luca Antiga",
+      "Alban Desmaison",
+      "Andreas Kopf",
+      "Edward Yang",
+      "Zachary DeVito",
+      "Martin Raison",
+      "Alykhan Tejani",
+      "Sasank Chilamkurthy",
+      "Benoit Steiner",
+      "Lu Fang",
+      "Junjie Bai",
+      "Soumith Chintala",
+      "H. Wallach",
+      "H. Larochelle",
+      "A. Beygelzimer",
+      "F. d’Alché-Buc",
+      "E. Fox",
+      "R. Garnett"
+    ],
+    "year": 2019,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Curran Associates, Inc.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 21,
+    "raw": "Dhananjai M. Rao and Philip A. Wilsey. 2006. Accelerating ATM Simulations Using Dynamic Component Substitution (DCS). SIMULATION 82, 4 (April 2006), 235–253. https://doi.org/10.1177/0037549706067271",
+    "title": "Accelerating ATM Simulations Using Dynamic Component Substitution (DCS)",
+    "authors": [
+      "Dhananjai M. Rao",
+      "Philip A. Wilsey"
+    ],
+    "year": 2006,
+    "doi": "10.1177/0037549706067271",
+    "arxiv_id": null,
+    "venue": "SIMULATION",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 22,
+    "raw": "Sudhir Srinivasan and Paul F. Reynolds. 1998. Elastic Time. ACM Trans. Model. Comput. Simul. 8, 2 (April 1998), 103–139. https://doi.org/10.1145/280265.280267",
+    "title": "Elastic Time",
+    "authors": [
+      "Sudhir Srinivasan",
+      "Paul F. Reynolds"
+    ],
+    "year": 1998,
+    "doi": "10.1145/280265.280267",
+    "arxiv_id": null,
+    "venue": "ACM Trans. Model. Comput. Simul.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 23,
+    "raw": "Noah Wolfe, Misbah Mubarak, Nikhil Jain, Jens Domke, Abhinav Bhatele, Christopher D. Carothers, and Robert B. Ross. 2017. Preliminary Performance Analysis of Multi-Rail Fat-Tree Networks. In Proceedings of the 17th IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing (Madrid, Spain) (CCGrid ’17). IEEE Press, 258–261. https://doi.org/10.1109/CCGRID.2017.102",
+    "title": "Preliminary Performance Analysis of Multi-Rail Fat-Tree Networks",
+    "authors": [
+      "Noah Wolfe",
+      "Misbah Mubarak",
+      "Nikhil Jain",
+      "Jens Domke",
+      "Abhinav Bhatele",
+      "Christopher D. Carothers",
+      "Robert B. Ross"
+    ],
+    "year": 2017,
+    "doi": "10.1109/CCGRID.2017.102",
+    "arxiv_id": null,
+    "venue": "Proceedings of the 17th IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing (CCGrid ’17)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 24,
+    "raw": "Xiongxiao Xu, Xin Wang, Elkin Cruz-Camacho, Christopher D. Carothers, Kevin A. Brown, Robert B. Ross, Zhiling Lan, and Kai Shu. 2023. Machine Learning for Interconnect Network Traffic Forecasting: Investigation and Exploitation. In Proceedings of the 2023 ACM SIGSIM Conference on Principles of Advanced Discrete Simulation . 133–137.",
+    "title": "Machine Learning for Interconnect Network Traffic Forecasting: Investigation and Exploitation",
+    "authors": [
+      "Xiongxiao Xu",
+      "Xin Wang",
+      "Elkin Cruz-Camacho",
+      "Christopher D. Carothers",
+      "Kevin A. Brown",
+      "Robert B. Ross",
+      "Zhiling Lan",
+      "Kai Shu"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the 2023 ACM SIGSIM Conference on Principles of Advanced Discrete Simulation",
+    "github_url": null,
+    "url": null
+  }
+]
