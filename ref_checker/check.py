@@ -41,6 +41,8 @@ _QUOTA_EXHAUSTED_THRESHOLD = 300.0
 
 _WAIT_VISIBILITY_THRESHOLD = 10.0
 
+_SS_UNAUTH_DELAY = 12.0
+
 _ALL_DISABLED_SENTINEL = "all_scholarly_sources_disabled"
 
 
@@ -93,26 +95,66 @@ class _Shutdown:
 class SourceHealth:
     """Session-scoped circuit breaker for scholarly sources.
 
-    A source is disabled after THRESHOLD consecutive `error` outcomes across
-    the session. Any `hit_*` or `not_found` outcome resets the counter.
+    Two independent counters per source:
+
+    - Regular error counter: incremented on ``error``, tripped at
+      ``THRESHOLD`` consecutive errors. Reset by any ``hit_*`` /
+      ``not_found`` / ``rate_limited`` outcome (real errors are more
+      definitive than transient rate limits).
+    - Rate-limit counter: incremented on ``rate_limited`` (i.e., a full
+      retry cycle where every attempt was a :class:`~ref_checker.errors.RateLimited`),
+      tripped at ``RATE_LIMIT_THRESHOLD`` consecutive rate-limit exhaustions.
+      Reset by any ``hit_*`` / ``not_found`` outcome.
+
+    Also tracks whether we've already logged the first-429 diagnostic for
+    a source in this session (see :meth:`should_log_first_rate_limit`).
     """
 
     THRESHOLD = 3
+    RATE_LIMIT_THRESHOLD = 3
 
-    def __init__(self, threshold: int = THRESHOLD, stats: _Stats | None = None) -> None:
+    def __init__(
+        self,
+        threshold: int = THRESHOLD,
+        rate_limit_threshold: int = RATE_LIMIT_THRESHOLD,
+        stats: _Stats | None = None,
+    ) -> None:
         self._threshold = threshold
+        self._rate_limit_threshold = rate_limit_threshold
         self._consecutive: dict[str, int] = {}
+        self._consecutive_rate_limit: dict[str, int] = {}
         self._disabled: set[str] = set()
+        self._first_rate_limit_logged: set[str] = set()
         self._stats = stats
         self._lock = threading.Lock()
 
     def record(self, source: str, status: str) -> None:
         newly_disabled = False
+        disable_reason = ""
         with self._lock:
             if status in ("hit_id", "hit_title", "not_found"):
                 self._consecutive[source] = 0
+                self._consecutive_rate_limit[source] = 0
                 return
-            if status == "error":
+            if status == "rate_limited":
+                self._consecutive[source] = 0
+                self._consecutive_rate_limit[source] = (
+                    self._consecutive_rate_limit.get(source, 0) + 1
+                )
+                if (
+                    self._consecutive_rate_limit[source] >= self._rate_limit_threshold
+                    and source not in self._disabled
+                ):
+                    self._disabled.add(source)
+                    newly_disabled = True
+                    disable_reason = (
+                        f"{self._rate_limit_threshold} consecutive rate-limit "
+                        f"exhaustions (source appears systematically throttled)"
+                    )
+                if not newly_disabled:
+                    return
+            elif status == "error":
+                self._consecutive_rate_limit[source] = 0
                 self._consecutive[source] = self._consecutive.get(source, 0) + 1
                 if (
                     self._consecutive[source] >= self._threshold
@@ -120,15 +162,24 @@ class SourceHealth:
                 ):
                     self._disabled.add(source)
                     newly_disabled = True
+                    disable_reason = f"{self._threshold} consecutive errors"
+                if not newly_disabled:
+                    return
         if newly_disabled:
-            reason = f"{self._threshold} consecutive errors"
             if self._stats is not None:
-                self._stats.record_disabled(source, reason)
+                self._stats.record_disabled(source, disable_reason)
             print(
-                f"[ref-checker] source '{source}' disabled for remainder of "
-                f"session after {self._threshold} consecutive errors",
+                f"[ref-checker] source '{source}' disabled: {disable_reason}",
                 file=sys.stderr,
             )
+
+    def should_log_first_rate_limit(self, source: str) -> bool:
+        """Return True the first time called per source; False thereafter."""
+        with self._lock:
+            if source in self._first_rate_limit_logged:
+                return False
+            self._first_rate_limit_logged.add(source)
+            return True
 
     def is_disabled(self, source: str) -> bool:
         with self._lock:
@@ -204,10 +255,19 @@ def _retry(
     tries: int = 3,
     stats: _Stats | None = None,
     source: str = "",
+    mode: str = "",
     on_exhausted: Callable[[], None] | None = None,
     shutdown: _Shutdown | None = None,
+    health: "SourceHealth | None" = None,
 ):
     """Call *fn* with retries; return (result_or_None, cause, retry_after).
+
+    ``mode`` is passed to the stats recorder so per-source query/retry/
+    exhaustion counts can be broken down by lookup mode
+    (``"doi"`` / ``"arxiv_id"`` / ``"title"`` / ``"url"``).
+
+    ``health`` (when supplied) is used to emit a one-time ``first 429 seen``
+    diagnostic per source in the session.
 
     ``result_or_None`` is whatever *fn* returned on success (a tuple, per the
     source contract), or ``None`` on exhaustion / shutdown.
@@ -217,8 +277,8 @@ def _retry(
       - ``"error"`` on exhaustion where at least one attempt failed with a
         non-rate-limit exception.
       - ``"rate_limit"`` on exhaustion where *every* failed attempt was a
-        :class:`RateLimited`. The caller should not count this toward the
-        circuit breaker.
+        :class:`RateLimited`. Callers count this toward the rate-limit
+        counter of the circuit breaker (via ``health.record(src, "rate_limited")``).
       - ``"quota_exhausted"`` when a single :class:`RateLimited` carried a
         ``retry_after`` larger than :data:`_QUOTA_EXHAUSTED_THRESHOLD`. No
         further attempts are made — the caller should immediately disable
@@ -234,9 +294,13 @@ def _retry(
     all_rate_limited = True
     any_attempted = False
 
-    def _do_wait(wait: float, reason: str) -> bool:
-        """Sleep for *wait* seconds; return True if shutdown requested."""
-        if wait >= _WAIT_VISIBILITY_THRESHOLD:
+    def _do_wait(wait: float, reason: str, is_rate_limit: bool) -> bool:
+        """Sleep for *wait* seconds; return True if shutdown requested.
+
+        Rate-limit waits always print (however brief); generic-backoff waits
+        only print when >= _WAIT_VISIBILITY_THRESHOLD.
+        """
+        if is_rate_limit or wait >= _WAIT_VISIBILITY_THRESHOLD:
             print(
                 f"[ref-checker] {source}: waiting {_format_duration(wait)} "
                 f"before retry ({reason})",
@@ -247,6 +311,20 @@ def _retry(
         time.sleep(wait)
         return False
 
+    def _log_first_rate_limit(exc: RateLimited) -> None:
+        if health is None or not source:
+            return
+        if not health.should_log_first_rate_limit(source):
+            return
+        if exc.retry_after is None:
+            ra = "<none>"
+        else:
+            ra = f"{exc.retry_after:.0f}s"
+        print(
+            f"[ref-checker] {source}: first 429 seen (Retry-After={ra})",
+            file=sys.stderr,
+        )
+
     for attempt in range(tries):
         if shutdown is not None and shutdown.requested():
             return None, None, None
@@ -255,12 +333,13 @@ def _retry(
             return fn(), None, None
         except RateLimited as exc:
             last_exc = exc
+            _log_first_rate_limit(exc)
             if (
                 exc.retry_after is not None
                 and exc.retry_after > _QUOTA_EXHAUSTED_THRESHOLD
             ):
                 if stats and source:
-                    stats.record_exhausted(source)
+                    stats.record_exhausted(source, mode)
                 if on_exhausted:
                     on_exhausted()
                 print(
@@ -272,14 +351,21 @@ def _retry(
                 return None, "quota_exhausted", exc.retry_after
             if attempt < tries - 1:
                 if exc.retry_after is not None:
-                    wait = min(exc.retry_after, _MAX_RETRY_AFTER)
-                    reason = f"Retry-After={exc.retry_after:.0f}s"
+                    raw = exc.retry_after
+                    wait = min(raw, _MAX_RETRY_AFTER)
+                    if raw > _MAX_RETRY_AFTER:
+                        reason = (
+                            f"Retry-After={raw:.0f}s, "
+                            f"capped at {_MAX_RETRY_AFTER:.0f}s"
+                        )
+                    else:
+                        reason = f"Retry-After={raw:.0f}s"
                 else:
                     wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
-                    reason = "backoff"
+                    reason = "Retry-After=<none>, backoff"
                 if stats and source:
-                    stats.record_retry(source)
-                if _do_wait(wait, reason):
+                    stats.record_retry(source, mode)
+                if _do_wait(wait, reason, is_rate_limit=True):
                     return None, None, None
         except Exception as exc:
             last_exc = exc
@@ -287,13 +373,13 @@ def _retry(
             if attempt < tries - 1:
                 wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
                 if stats and source:
-                    stats.record_retry(source)
-                if _do_wait(wait, "backoff"):
+                    stats.record_retry(source, mode)
+                if _do_wait(wait, "backoff", is_rate_limit=False):
                     return None, None, None
     if not any_attempted:
         return None, None, None
     if stats and source:
-        stats.record_exhausted(source)
+        stats.record_exhausted(source, mode)
     if on_exhausted:
         on_exhausted()
     cause = "rate_limit" if all_rate_limited else "error"
@@ -401,7 +487,7 @@ def lookup_reference(
                                  note="aborted by user")
             return None, None
         if stats:
-            stats.record_query(src_name)
+            stats.record_query(src_name, queried_by)
         errored = {"flag": False}
 
         def _on_exhausted() -> None:
@@ -411,8 +497,10 @@ def lookup_reference(
             lambda: fn(*args),
             stats=stats,
             source=src_name,
+            mode=queried_by,
             on_exhausted=_on_exhausted,
             shutdown=shutdown,
+            health=health,
         )
         rl.mark(src_name)
         if errored["flag"]:
@@ -433,9 +521,10 @@ def lookup_reference(
                     if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
                                  note=note)
-            # Rate-limit exhaustion should NOT advance the circuit breaker.
-            # Treat it as "not_found" for breaker purposes (resets counter).
-            health.record(src_name, "not_found" if cause == "rate_limit" else "error")
+            # Rate-limit exhaustion advances the rate-limit counter (which
+            # can independently disable the source at RATE_LIMIT_THRESHOLD);
+            # real errors advance the regular error counter.
+            health.record(src_name, "rate_limited" if cause == "rate_limit" else "error")
             return None, None
         if out is None:
             # Shutdown-before-attempt path.
@@ -465,7 +554,7 @@ def lookup_reference(
                                  note="aborted by user")
             return None, None
         if stats:
-            stats.record_query(src_name)
+            stats.record_query(src_name, queried_by)
         errored = {"flag": False}
 
         def _on_exhausted() -> None:
@@ -476,8 +565,10 @@ def lookup_reference(
                 lambda: src.check_url(urls),
                 stats=stats,
                 source=src_name,
+                mode=queried_by,
                 on_exhausted=_on_exhausted,
                 shutdown=shutdown,
+                health=health,
             )
         except Exception:
             out, cause, retry_after = None, "error", None
@@ -500,7 +591,7 @@ def lookup_reference(
                     if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
                                  note=note)
-            health.record(src_name, "not_found" if cause == "rate_limit" else "error")
+            health.record(src_name, "rate_limited" if cause == "rate_limit" else "error")
             return None, None
         if out is None:
             return None, None
@@ -629,7 +720,16 @@ def check_references(
     stats = _Stats()
     shutdown = _Shutdown()
     health = SourceHealth(threshold=source_error_threshold, stats=stats)
-    rl = _RateLimiter(delays or _DEFAULT_DELAYS, shutdown=shutdown)
+    effective_delays = dict(delays or _DEFAULT_DELAYS)
+    # SS unauth tier is severely rate-limited. If no API key is configured,
+    # spread requests further apart to reduce 429 pressure. Preserve
+    # explicitly-zeroed delays (test fixtures) — only override when the
+    # base delay is a normal positive value below _SS_UNAUTH_DELAY.
+    if not os.environ.get("SEMANTICSCHOLAR_API_KEY", "").strip():
+        current = effective_delays.get("semanticscholar", 8.0)
+        if 0.0 < current < _SS_UNAUTH_DELAY:
+            effective_delays["semanticscholar"] = _SS_UNAUTH_DELAY
+    rl = _RateLimiter(effective_delays, shutdown=shutdown)
 
     all_results: dict[int, LookupResult] = {}
     prior_entries: dict[int, dict] = {}

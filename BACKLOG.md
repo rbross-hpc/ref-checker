@@ -48,6 +48,16 @@ existing `_http.parse_retry_after` helper) and, when present, raise
 amount before hitting the mirror. Low priority: the current mirror-failover
 path already handles the common case.
 
+### Per-source `--delay-<src>` CLI flags
+
+Currently only `--delay-osti` exists (from the OSTI merge). Generalize to
+one flag per scholarly source: `--delay-openalex`, `--delay-crossref`,
+`--delay-osti`, `--delay-dblp`, `--delay-arxiv`, `--delay-semanticscholar`.
+Each optional; each overrides the corresponding entry in `_DEFAULT_DELAYS`.
+Wire through `check_references(delays=...)`. Useful when a specific source
+is being unusually generous or stingy on a given day and the user wants to
+tune without editing code.
+
 ### Semantic Scholar: drop API key on 403 and retry unauthenticated
 
 When Semantic Scholar returns 403, the current fix (added alongside the

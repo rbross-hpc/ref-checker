@@ -198,29 +198,57 @@ class LookupResult:
             self.year_mismatch_note = best_year_note
 
 
+_MODE_ORDER = ("doi", "arxiv_id", "title", "url")
+
+
 @dataclass
 class _Stats:
     queries: dict[str, int] = field(default_factory=dict)
     retries: dict[str, int] = field(default_factory=dict)
     exhausted: dict[str, int] = field(default_factory=dict)
     disabled: dict[str, str] = field(default_factory=dict)
+    queries_by_mode: dict[str, dict[str, int]] = field(default_factory=dict)
+    retries_by_mode: dict[str, dict[str, int]] = field(default_factory=dict)
+    exhausted_by_mode: dict[str, dict[str, int]] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def record_query(self, source: str) -> None:
+    def _bump(self, table: dict[str, dict[str, int]], source: str, mode: str) -> None:
+        if not mode:
+            return
+        inner = table.setdefault(source, {})
+        inner[mode] = inner.get(mode, 0) + 1
+
+    def record_query(self, source: str, mode: str = "") -> None:
         with self._lock:
             self.queries[source] = self.queries.get(source, 0) + 1
+            self._bump(self.queries_by_mode, source, mode)
 
-    def record_retry(self, source: str) -> None:
+    def record_retry(self, source: str, mode: str = "") -> None:
         with self._lock:
             self.retries[source] = self.retries.get(source, 0) + 1
+            self._bump(self.retries_by_mode, source, mode)
 
-    def record_exhausted(self, source: str) -> None:
+    def record_exhausted(self, source: str, mode: str = "") -> None:
         with self._lock:
             self.exhausted[source] = self.exhausted.get(source, 0) + 1
+            self._bump(self.exhausted_by_mode, source, mode)
 
     def record_disabled(self, source: str, reason: str) -> None:
         with self._lock:
             self.disabled[source] = reason
+
+    @staticmethod
+    def _format_mode_breakdown(by_mode: dict[str, int] | None) -> str:
+        if not by_mode:
+            return ""
+        used = [m for m in _MODE_ORDER if by_mode.get(m)]
+        for m in by_mode:
+            if m not in _MODE_ORDER and by_mode[m]:
+                used.append(m)
+        if len(used) <= 1:
+            return ""
+        parts = [f"{by_mode[m]} {m}" for m in used]
+        return " (" + ", ".join(parts) + ")"
 
     def print_summary(self) -> None:
         all_sources = sorted(set(list(self.queries) + list(self.retries) + list(self.exhausted)))
@@ -230,11 +258,16 @@ class _Stats:
                 q = self.queries.get(src, 0)
                 r = self.retries.get(src, 0)
                 e = self.exhausted.get(src, 0)
-                retry_str = f", {r} retr{'y' if r == 1 else 'ies'}" if r else ""
-                exhausted_str = f", {e} exhausted" if e else ""
+                q_break = self._format_mode_breakdown(self.queries_by_mode.get(src))
+                r_break = self._format_mode_breakdown(self.retries_by_mode.get(src))
+                e_break = self._format_mode_breakdown(self.exhausted_by_mode.get(src))
+                retry_str = (
+                    f", {r} retr{'y' if r == 1 else 'ies'}{r_break}" if r else ""
+                )
+                exhausted_str = f", {e} exhausted{e_break}" if e else ""
                 print(
                     f"[ref-checker]   {src:20s} {q:3d} quer{'y' if q == 1 else 'ies'}"
-                    f"{retry_str}{exhausted_str}",
+                    f"{q_break}{retry_str}{exhausted_str}",
                     file=sys.stderr,
                 )
         if self.disabled:

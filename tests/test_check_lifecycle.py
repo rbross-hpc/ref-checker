@@ -120,6 +120,57 @@ class TestSourceHealth:
             h.record(name, "error")
         assert h.all_scholarly_disabled()
 
+    def test_consecutive_rate_limit_disables_at_threshold(self):
+        h = check_mod.SourceHealth(rate_limit_threshold=3)
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        assert not h.is_disabled("openalex")
+        h.record("openalex", "rate_limited")
+        assert h.is_disabled("openalex")
+
+    def test_rate_limit_counter_resets_on_hit(self):
+        h = check_mod.SourceHealth(rate_limit_threshold=3)
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "hit_id")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        assert not h.is_disabled("openalex")
+
+    def test_rate_limit_counter_resets_on_not_found(self):
+        h = check_mod.SourceHealth(rate_limit_threshold=3)
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "not_found")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        assert not h.is_disabled("openalex")
+
+    def test_rate_limit_does_not_advance_error_counter(self):
+        h = check_mod.SourceHealth(threshold=3, rate_limit_threshold=10)
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "error")
+        h.record("openalex", "error")
+        assert not h.is_disabled("openalex")
+        h.record("openalex", "error")
+        assert h.is_disabled("openalex")
+
+    def test_error_resets_rate_limit_counter(self):
+        h = check_mod.SourceHealth(threshold=10, rate_limit_threshold=3)
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "error")
+        h.record("openalex", "rate_limited")
+        h.record("openalex", "rate_limited")
+        assert not h.is_disabled("openalex")
+
+    def test_should_log_first_rate_limit_returns_true_once(self):
+        h = check_mod.SourceHealth()
+        assert h.should_log_first_rate_limit("openalex") is True
+        assert h.should_log_first_rate_limit("openalex") is False
+        assert h.should_log_first_rate_limit("crossref") is True
+
 
 # --------------------------------------------------------------------------
 # per_source population
@@ -691,9 +742,13 @@ class TestBoundedSubmission:
         assert "started ref #" not in err
         assert "[ref-checker] Concurrency: 3 worker(s)" in err
 
-    def test_rate_limit_exhaustion_does_not_disable_source(
+    def test_rate_limit_exhaustion_does_not_advance_error_counter(
         self, stub_sources, tmp_path,
     ):
+        # Rate-limit exhaustions advance the RATE_LIMIT counter, not the
+        # regular error counter. With source_error_threshold=1 but the
+        # error counter never advancing, disable only happens once the
+        # rate-limit counter hits RATE_LIMIT_THRESHOLD (default 3).
         from ref_checker.errors import RateLimited
 
         def _always_rate_limited(*a, **kw):
@@ -710,17 +765,16 @@ class TestBoundedSubmission:
             source_error_threshold=1, jobs=1,
         )
         data = json.loads(sc.read_text())
-        for key in data["references"]:
-            per_src = data["references"][key]["result"].get("per_source", {})
-            oa = per_src.get("openalex")
-            if oa is not None:
-                assert oa["status"] in ("error", "disabled")
-                if oa["status"] == "error":
-                    assert "rate-limit" in (oa.get("note") or "").lower()
         first_entry = next(iter(data["references"].values()))
         first_oa = first_entry["result"].get("per_source", {}).get("openalex")
         assert first_oa is not None
         assert first_oa["status"] == "error"
+        assert "rate-limit" in (first_oa.get("note") or "").lower()
+
+        last_key = list(data["references"].keys())[-1]
+        last_oa = data["references"][last_key]["result"].get("per_source", {}).get("openalex")
+        assert last_oa is not None
+        assert last_oa["status"] == "disabled"
 
     def test_rate_limited_retry_uses_retry_after(
         self, stub_sources, tmp_path, monkeypatch,
@@ -956,9 +1010,11 @@ class TestQuotaAndVisibility:
         assert "before retry" in err
         assert "Retry-After=15s" in err
 
-    def test_short_wait_omits_visibility_line(
+    def test_short_rate_limit_wait_still_visible(
         self, stub_sources, tmp_path, monkeypatch, capsys,
     ):
+        # RateLimited waits always print regardless of duration so the user
+        # can see the source's behavior even under brief throttling.
         from ref_checker.errors import RateLimited
 
         monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
@@ -979,7 +1035,8 @@ class TestQuotaAndVisibility:
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
         err = capsys.readouterr().err
-        assert "openalex: waiting" not in err
+        assert "openalex: waiting" in err
+        assert "Retry-After=1s" in err
 
     def test_elapsed_time_appears_in_summary(
         self, stub_sources, tmp_path, capsys,
@@ -993,3 +1050,259 @@ class TestQuotaAndVisibility:
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "[ref-checker] Elapsed:" in err
+
+
+# --------------------------------------------------------------------------
+# Rate-limit diagnostics: first-429 line + always-on wait visibility
+# --------------------------------------------------------------------------
+
+
+class TestRateLimitDiagnostics:
+    def test_first_rate_limit_diagnostic_prints_once(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _rl_twice_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise RateLimited(retry_after=5.0)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rl_twice_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        first_lines = [l for l in err.splitlines() if "first 429 seen" in l]
+        assert len(first_lines) == 1
+        assert "Retry-After=5s" in first_lines[0]
+        assert "openalex" in first_lines[0]
+
+    def test_first_rate_limit_reports_missing_retry_after(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _rl_once_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RateLimited(retry_after=None)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rl_once_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        assert "openalex: first 429 seen (Retry-After=<none>)" in err
+
+    def test_generic_backoff_below_threshold_stays_quiet(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        # Generic (non-RateLimited) retries at short waits should NOT
+        # print the visibility line — only long ones and rate-limit ones do.
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(check_mod, "_RETRY_BACKOFF", (1.0, 1.0, 1.0))
+
+        calls = {"n": 0}
+
+        def _err_once_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RuntimeError("blip")
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _err_once_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        assert "openalex: waiting" not in err
+
+    def test_rate_limit_wait_notes_cap_when_over_max(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _rl_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RateLimited(retry_after=120.0)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rl_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        assert "Retry-After=120s" in err
+        assert "capped at 60s" in err
+
+
+# --------------------------------------------------------------------------
+# Stats: per-mode breakdown (doi vs title)
+# --------------------------------------------------------------------------
+
+
+class TestStatsByMode:
+    def test_records_doi_and_title_separately(
+        self, stub_sources, tmp_path, capsys,
+    ):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (None, None)
+        )
+        stub_sources["openalex"].search_by_title = (
+            lambda title: (None, None)
+        )
+
+        refs = [_ref(index=1, doi="10.1/x1"), _ref(index=2, doi=None, title="T2")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        # Look for the openalex summary line and confirm both modes appear.
+        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        assert "doi" in oa_line
+        assert "title" in oa_line
+
+    def test_single_mode_uses_compact_format(
+        self, stub_sources, tmp_path, capsys,
+    ):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        assert "(" not in oa_line
+
+    def test_exhausted_by_mode_shown_with_mixed_modes(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        # openalex gets both a successful DOI query AND an exhausted
+        # title query, forcing multi-mode breakdown on the exhausted line.
+        from ref_checker.errors import RateLimited
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+
+        def _title_rl(title):
+            raise RateLimited(retry_after=0.0)
+
+        stub_sources["openalex"].search_by_title = _title_rl
+
+        refs = [
+            _ref(index=1, doi="10.1/x1"),
+            _ref(index=2, doi=None, title="A title only ref"),
+        ]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        assert "doi" in oa_line
+        assert "title" in oa_line
+        assert "exhausted" in oa_line
+
+
+# --------------------------------------------------------------------------
+# SS unauth delay tuning
+# --------------------------------------------------------------------------
+
+
+class TestSSUnauthDelay:
+    def test_ss_delay_bumped_when_key_unset(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        monkeypatch.delenv("SEMANTICSCHOLAR_API_KEY", raising=False)
+        # Restore a realistic (non-zero) default so the override kicks in.
+        monkeypatch.setattr(
+            check_mod, "_DEFAULT_DELAYS",
+            {**{k: 0.0 for k in check_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+        )
+        captured: dict = {}
+        real_init = check_mod._RateLimiter.__init__
+
+        def _capture_init(self, delays, shutdown=None):
+            captured["delays"] = dict(delays)
+            real_init(self, delays, shutdown=shutdown)
+
+        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        assert captured["delays"]["semanticscholar"] == check_mod._SS_UNAUTH_DELAY
+
+    def test_ss_delay_preserved_when_key_set(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        monkeypatch.setenv("SEMANTICSCHOLAR_API_KEY", "sk-test")
+        monkeypatch.setattr(
+            check_mod, "_DEFAULT_DELAYS",
+            {**{k: 0.0 for k in check_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+        )
+        captured: dict = {}
+        real_init = check_mod._RateLimiter.__init__
+
+        def _capture_init(self, delays, shutdown=None):
+            captured["delays"] = dict(delays)
+            real_init(self, delays, shutdown=shutdown)
+
+        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        assert captured["delays"]["semanticscholar"] == 8.0
+
+    def test_ss_delay_zero_preserved_for_tests(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        # If tests explicitly zero out delays, the override must not fire.
+        monkeypatch.delenv("SEMANTICSCHOLAR_API_KEY", raising=False)
+        captured: dict = {}
+        real_init = check_mod._RateLimiter.__init__
+
+        def _capture_init(self, delays, shutdown=None):
+            captured["delays"] = dict(delays)
+            real_init(self, delays, shutdown=shutdown)
+
+        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        assert captured["delays"]["semanticscholar"] == 0.0
