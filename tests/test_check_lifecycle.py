@@ -1181,9 +1181,11 @@ class TestStatsByMode:
         assert "doi" in oa_line
         assert "title" in oa_line
 
-    def test_single_mode_uses_compact_format(
+    def test_single_mode_still_shows_breakdown(
         self, stub_sources, tmp_path, capsys,
     ):
+        # Single-mode sources still show the (N mode) breakdown so the
+        # summary format is consistent across sources.
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
         )
@@ -1193,7 +1195,7 @@ class TestStatsByMode:
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         oa_line = next(l for l in err.splitlines() if "openalex " in l)
-        assert "(" not in oa_line
+        assert "(3 doi)" in oa_line
 
     def test_exhausted_by_mode_shown_with_mixed_modes(
         self, stub_sources, tmp_path, monkeypatch, capsys,
@@ -1306,3 +1308,88 @@ class TestSSUnauthDelay:
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
         assert captured["delays"]["semanticscholar"] == 0.0
+
+
+# --------------------------------------------------------------------------
+# Disabled-during-flight race fixes
+# --------------------------------------------------------------------------
+
+
+class TestDisabledDuringFlight:
+    def test_retry_short_circuits_when_source_disabled_between_attempts(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        # Simulate: a source raises RateLimited once, then another worker
+        # disables it externally. The next retry iteration must short-circuit
+        # without calling the source function again.
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        call_count = {"n": 0}
+        health_ref: dict = {}
+
+        def _rl_then_check(doi):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # After this raise, we disable the source ourselves.
+                health = health_ref.get("h")
+                if health is not None:
+                    health.disable("openalex", "manual test disable")
+                raise RateLimited(retry_after=0.0)
+            # If we get here, the short-circuit failed.
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rl_then_check
+
+        real_init = check_mod.SourceHealth.__init__
+
+        def _capture(self, *a, **kw):
+            real_init(self, *a, **kw)
+            health_ref["h"] = self
+
+        monkeypatch.setattr(check_mod.SourceHealth, "__init__", _capture)
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        # Only the first attempt actually invoked the source fn; the retry
+        # iteration short-circuited on is_disabled.
+        assert call_count["n"] == 1
+
+    def test_call_short_circuits_when_disabled_during_rl_wait(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        # Simulate: worker A holds the RateLimiter's slot for openalex.
+        # While worker B is blocked in rl.wait, worker A disables the source.
+        # When B's rl.wait returns, B must re-check and short-circuit
+        # without ever calling the source function.
+        from ref_checker.errors import RateLimited
+
+        openalex_calls = {"n": 0}
+
+        def _boom(*a, **kw):
+            openalex_calls["n"] += 1
+            raise RateLimited(retry_after=0.0)
+
+        stub_sources["openalex"].get_by_doi = _boom
+        stub_sources["openalex"].search_by_title = _boom
+        stub_sources["crossref"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+
+        # RATE_LIMIT_THRESHOLD is 3 by default. With sequential (jobs=1)
+        # each ref = 1 rate-limit exhaustion cycle = 3 calls to the source
+        # fn. Once disabled, subsequent refs must short-circuit without
+        # calling the source at all.
+        assert openalex_calls["n"] <= 3 * check_mod.SourceHealth.RATE_LIMIT_THRESHOLD, (
+            f"openalex called {openalex_calls['n']} times; should short-circuit "
+            f"after {check_mod.SourceHealth.RATE_LIMIT_THRESHOLD} exhaustion cycles"
+        )

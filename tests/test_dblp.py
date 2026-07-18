@@ -109,3 +109,118 @@ class TestSummarize:
     def test_punctuation_only_title_becomes_none(self):
         s = _summarize(self._make_info(title="..."))
         assert s["title"] is None
+
+
+# --------------------------------------------------------------------------
+# Mirror failover on RateLimited
+# --------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, status_code, payload=None, headers=None):
+        self.status_code = status_code
+        self._payload = payload
+        self.headers = headers or {}
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            from requests import HTTPError
+            raise HTTPError(f"HTTP {self.status_code}")
+
+
+class TestMirrorFailover:
+    def test_mirror_tried_on_rate_limit_from_primary(self, monkeypatch):
+        from ref_checker.sources import dblp
+
+        primary_url, mirror_url = dblp._BASES
+
+        good_payload = {
+            "result": {
+                "hits": {
+                    "hit": [
+                        {"info": {"title": "MapReduce.", "year": "2008",
+                                  "venue": "Commun. ACM",
+                                  "doi": "10.1/x",
+                                  "url": "https://dblp.org/x",
+                                  "key": "k",
+                                  "authors": {"author": [{"text": "A B"}]}}}
+                    ]
+                }
+            }
+        }
+        calls: list[str] = []
+
+        class _Session:
+            headers: dict = {}
+
+            def get(self, url, params=None, timeout=None):
+                calls.append(url)
+                if url == primary_url:
+                    return _FakeResponse(429, headers={})
+                return _FakeResponse(200, good_payload)
+
+        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+
+        summary, sim = dblp.search_by_title("mapreduce")
+        assert summary is not None
+        assert summary["source"] == "dblp"
+        assert calls == [primary_url, mirror_url]
+
+    def test_both_mirrors_rate_limited_raises_rate_limited(self, monkeypatch):
+        from ref_checker.sources import dblp
+        from ref_checker.errors import RateLimited
+
+        calls: list[str] = []
+
+        class _Session:
+            headers: dict = {}
+
+            def get(self, url, params=None, timeout=None):
+                calls.append(url)
+                return _FakeResponse(429, headers={"Retry-After": "7"})
+
+        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+
+        with pytest.raises(RateLimited) as ei:
+            dblp.search_by_title("mapreduce")
+        assert ei.value.retry_after == 7.0
+        assert len(calls) == len(dblp._BASES)
+
+    def test_connection_error_on_primary_still_fails_over(self, monkeypatch):
+        import requests
+        from ref_checker.sources import dblp
+
+        primary_url, mirror_url = dblp._BASES
+
+        good_payload = {
+            "result": {
+                "hits": {
+                    "hit": [
+                        {"info": {"title": "X.", "year": "2020",
+                                  "venue": "V", "doi": "10.1/y",
+                                  "url": "https://dblp.org/y",
+                                  "key": "k",
+                                  "authors": {"author": [{"text": "A B"}]}}}
+                    ]
+                }
+            }
+        }
+        calls: list[str] = []
+
+        class _Session:
+            headers: dict = {}
+
+            def get(self, url, params=None, timeout=None):
+                calls.append(url)
+                if url == primary_url:
+                    raise requests.exceptions.ConnectionError("boom")
+                return _FakeResponse(200, good_payload)
+
+        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+
+        summary, sim = dblp.search_by_title("x")
+        assert summary is not None
+        assert calls == [primary_url, mirror_url]

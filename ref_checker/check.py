@@ -328,6 +328,8 @@ def _retry(
     for attempt in range(tries):
         if shutdown is not None and shutdown.requested():
             return None, None, None
+        if health is not None and source and health.is_disabled(source):
+            return None, None, None
         any_attempted = True
         try:
             return fn(), None, None
@@ -482,6 +484,12 @@ def lookup_reference(
         if fn is None:
             return None, None
         rl.wait(src_name)
+        # Re-check after rl.wait — another worker may have disabled the source
+        # while we were waiting on the per-source rate limiter.
+        if health.is_disabled(src_name):
+            result.record_source(src_name, "disabled", queried_by=queried_by,
+                                 note="session circuit breaker")
+            return None, None
         if shutdown is not None and shutdown.requested():
             result.record_source(src_name, "skipped", queried_by=queried_by,
                                  note="aborted by user")
@@ -549,6 +557,12 @@ def lookup_reference(
                                  note="session circuit breaker")
             return None, None
         rl.wait(src_name)
+        # Re-check after rl.wait — another worker may have disabled the source
+        # while we were waiting on the per-source rate limiter.
+        if health.is_disabled(src_name):
+            result.record_source(src_name, "disabled", queried_by=queried_by,
+                                 note="session circuit breaker")
+            return None, None
         if shutdown is not None and shutdown.requested():
             result.record_source(src_name, "skipped", queried_by=queried_by,
                                  note="aborted by user")

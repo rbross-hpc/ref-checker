@@ -245,7 +245,7 @@ class _Stats:
         for m in by_mode:
             if m not in _MODE_ORDER and by_mode[m]:
                 used.append(m)
-        if len(used) <= 1:
+        if not used:
             return ""
         parts = [f"{by_mode[m]} {m}" for m in used]
         return " (" + ", ".join(parts) + ")"

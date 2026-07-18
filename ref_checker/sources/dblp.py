@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from ..errors import RateLimited
 from ..similarity import title_ratio
 from ._http import raise_for_rate_limit
 
@@ -105,7 +106,7 @@ def search_by_title(title: str) -> tuple[dict | None, float | None]:
                 cands.append((sim, summary))
             best_sim, best_summary = max(cands, key=lambda x: x[0])
             return best_summary, best_sim
-        except requests.exceptions.ConnectionError as exc:
+        except (requests.exceptions.ConnectionError, RateLimited) as exc:
             last_exc = exc
             continue
     if last_exc:
