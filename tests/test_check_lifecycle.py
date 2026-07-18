@@ -676,27 +676,112 @@ class TestBoundedSubmission:
             f"max in-flight was {in_flight['max']}, expected <= {window}"
         )
 
-    def test_started_log_lines_are_in_submission_order(
+    def test_no_started_lines_and_concurrency_line_present(
         self, stub_sources, tmp_path, capsys
     ):
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
         )
-        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 8)]
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 5)]
         sc = tmp_path / "results.json"
 
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
         err = capsys.readouterr().err
 
-        started_indices: list[int] = []
-        for line in err.splitlines():
-            if "started ref #" in line:
-                tail = line.split("started ref #", 1)[1]
-                num = tail.split(" ", 1)[0]
-                started_indices.append(int(num))
+        assert "started ref #" not in err
+        assert "[ref-checker] Concurrency: 3 worker(s)" in err
 
-        assert started_indices == sorted(started_indices)
-        assert started_indices == [1, 2, 3, 4, 5, 6, 7]
+    def test_rate_limit_exhaustion_does_not_disable_source(
+        self, stub_sources, tmp_path,
+    ):
+        from ref_checker.errors import RateLimited
+
+        def _always_rate_limited(*a, **kw):
+            raise RateLimited(retry_after=0.0)
+
+        stub_sources["openalex"].get_by_doi = _always_rate_limited
+        stub_sources["openalex"].search_by_title = _always_rate_limited
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf",
+            source_error_threshold=1, jobs=1,
+        )
+        data = json.loads(sc.read_text())
+        for key in data["references"]:
+            per_src = data["references"][key]["result"].get("per_source", {})
+            oa = per_src.get("openalex")
+            if oa is not None:
+                assert oa["status"] in ("error", "disabled")
+                if oa["status"] == "error":
+                    assert "rate-limit" in (oa.get("note") or "").lower()
+        first_entry = next(iter(data["references"].values()))
+        first_oa = first_entry["result"].get("per_source", {}).get("openalex")
+        assert first_oa is not None
+        assert first_oa["status"] == "error"
+
+    def test_rate_limited_retry_uses_retry_after(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        from ref_checker.errors import RateLimited
+
+        waits: list[float] = []
+
+        real_wait = check_mod._Shutdown.wait
+
+        def _record_wait(self, timeout):
+            waits.append(timeout)
+            return False
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", _record_wait)
+
+        calls = {"n": 0}
+
+        def _twice_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise RateLimited(retry_after=0.25)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _twice_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        retry_waits = [w for w in waits if 0.2 <= w <= 0.3]
+        assert len(retry_waits) >= 2, f"expected 2 retry_after=0.25 waits, got {waits!r}"
+
+    def test_mixed_error_and_rate_limit_still_trips_breaker(
+        self, stub_sources, tmp_path,
+    ):
+        from ref_checker.errors import RateLimited
+
+        seq = {"i": 0}
+
+        def _mixed(doi):
+            seq["i"] += 1
+            if seq["i"] % 2 == 1:
+                raise RateLimited(retry_after=0.0)
+            raise RuntimeError("real 500")
+
+        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
+            src = stub_sources[name]
+            for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
+                if hasattr(src, fn_name):
+                    setattr(src, fn_name, _mixed)
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+
+        reason = check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf",
+            source_error_threshold=1, jobs=1,
+        )
+        assert reason == "all_scholarly_sources_disabled"
 
     def test_broken_pipe_on_emit_is_swallowed(
         self, stub_sources, tmp_path, monkeypatch, capsys

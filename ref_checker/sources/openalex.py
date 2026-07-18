@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from ..similarity import title_ratio
+from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "openalex"
 
@@ -16,9 +17,13 @@ _BASE = "https://api.openalex.org/works"
 _WARNED_MAILTO = False
 
 
+def _mailto() -> str:
+    return os.environ.get("OPENALEX_MAILTO", "").strip()
+
+
 def _user_agent() -> str:
     global _WARNED_MAILTO
-    mailto = os.environ.get("OPENALEX_MAILTO", "")
+    mailto = _mailto()
     if mailto:
         return f"ref-checker/0.1 (mailto:{mailto})"
     if not _WARNED_MAILTO:
@@ -30,6 +35,14 @@ def _user_agent() -> str:
         )
         _WARNED_MAILTO = True
     return "ref-checker/0.1"
+
+
+def _polite_params(base: dict[str, Any] | None = None) -> dict[str, Any]:
+    params: dict[str, Any] = dict(base or {})
+    mailto = _mailto()
+    if mailto:
+        params["mailto"] = mailto
+    return params
 
 
 def _session() -> requests.Session:
@@ -82,11 +95,14 @@ def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
     norm = _normalize_doi(doi)
     if not norm:
         return None, None
-    resp = _session().get(f"{_BASE}/doi:{norm}", timeout=30)
+    resp = _session().get(
+        f"{_BASE}/doi:{norm}", params=_polite_params(), timeout=30,
+    )
     if resp.status_code == 200:
         return _summarize(resp.json()), 1.0
     if resp.status_code in (404, 410):
         return None, None
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     return None, None
 
@@ -99,7 +115,7 @@ def get_by_arxiv_id(arxiv_id: str) -> tuple[dict | None, float | None]:
 def search_by_title(
     title: str,
 ) -> tuple[dict | None, float | None]:
-    params: dict[str, Any] = {"search": title, "per-page": 5}
+    params = _polite_params({"search": title, "per-page": 5})
     resp = _session().get(_BASE, params=params, timeout=30)
     if resp.status_code == 200:
         results = resp.json().get("results", [])
@@ -113,5 +129,6 @@ def search_by_title(
         return _summarize(best_work), best_sim
     if resp.status_code == 404:
         return None, None
+    raise_for_rate_limit(resp, SOURCE_NAME)
     resp.raise_for_status()
     return None, None

@@ -35,3 +35,15 @@ Standalone doc describing the results sidecar as a consumable format, parallel
 to the existing `references/schema.md` (which covers the input refs JSON).
 Only worth doing if programmatic sidecar consumers outside `ref-checker`
 itself become a thing.
+
+## Sources
+
+### DBLP `Retry-After` handling on 503
+
+`ref_checker/sources/dblp.py` currently treats 503 as "try the next mirror"
+and moves on. DBLP occasionally returns 503 with a `Retry-After` header when
+it wants us to back off explicitly. We could parse `Retry-After` (via the
+existing `_http.parse_retry_after` helper) and, when present, raise
+`RateLimited(retry_after=...)` so the outer retry loop waits the requested
+amount before hitting the mirror. Low priority: the current mirror-failover
+path already handles the common case.

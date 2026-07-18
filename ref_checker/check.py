@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
+from .errors import RateLimited
 from .extract import Reference
 from .format import format_result
 from .results import LookupResult, _Stats
@@ -33,6 +34,8 @@ _DEFAULT_DELAYS: dict[str, float] = {
 }
 
 _RETRY_BACKOFF = (5.0, 10.0, 15.0)
+
+_MAX_RETRY_AFTER = 60.0
 
 _ALL_DISABLED_SENTINEL = "all_scholarly_sources_disabled"
 
@@ -165,15 +168,49 @@ def _retry(
     source: str = "",
     on_exhausted: Callable[[], None] | None = None,
     shutdown: _Shutdown | None = None,
-) -> tuple[dict | None, float | None] | tuple[dict | None, float | None, list]:
+):
+    """Call *fn* with retries; return (result_or_None, cause).
+
+    ``result_or_None`` is whatever *fn* returned on success (a tuple, per the
+    source contract), or ``None`` on exhaustion / shutdown.
+
+    ``cause`` is one of:
+      - ``None`` on success or shutdown-before-attempt.
+      - ``"error"`` on exhaustion where at least one attempt failed with a
+        non-rate-limit exception.
+      - ``"rate_limit"`` on exhaustion where *every* failed attempt was a
+        :class:`RateLimited`. The caller should not count this toward the
+        circuit breaker.
+
+    ``RateLimited.retry_after`` (when present, capped at ``_MAX_RETRY_AFTER``)
+    supersedes the default ``_RETRY_BACKOFF`` schedule.
+    """
     last_exc: Exception | None = None
+    all_rate_limited = True
+    any_attempted = False
     for attempt in range(tries):
         if shutdown is not None and shutdown.requested():
             return None, None
+        any_attempted = True
         try:
-            return fn()
+            return fn(), None
+        except RateLimited as exc:
+            last_exc = exc
+            if attempt < tries - 1:
+                if exc.retry_after is not None:
+                    wait = min(exc.retry_after, _MAX_RETRY_AFTER)
+                else:
+                    wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+                if stats and source:
+                    stats.record_retry(source)
+                if shutdown is not None:
+                    if shutdown.wait(wait):
+                        return None, None
+                else:
+                    time.sleep(wait)
         except Exception as exc:
             last_exc = exc
+            all_rate_limited = False
             if attempt < tries - 1:
                 wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
                 if stats and source:
@@ -183,16 +220,20 @@ def _retry(
                         return None, None
                 else:
                     time.sleep(wait)
+    if not any_attempted:
+        return None, None
     if stats and source:
         stats.record_exhausted(source)
     if on_exhausted:
         on_exhausted()
+    cause = "rate_limit" if all_rate_limited else "error"
+    kind = "rate-limit retries" if cause == "rate_limit" else "retries"
     print(
-        f"[ref-checker] WARNING: all {tries} retries exhausted for {source}"
+        f"[ref-checker] WARNING: all {tries} {kind} exhausted for {source}"
         + (f": {last_exc}" if last_exc else ""),
         file=sys.stderr,
     )
-    return None, None
+    return None, cause
 
 
 def _plan_ref_work(
@@ -296,7 +337,7 @@ def lookup_reference(
         def _on_exhausted() -> None:
             errored["flag"] = True
 
-        out = _retry(
+        out, cause = _retry(
             lambda: fn(*args),
             stats=stats,
             source=src_name,
@@ -305,9 +346,16 @@ def lookup_reference(
         )
         rl.mark(src_name)
         if errored["flag"]:
+            note = ("rate-limit retries exhausted"
+                    if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
-                                 note="retries exhausted")
-            health.record(src_name, "error")
+                                 note=note)
+            # Rate-limit exhaustion should NOT advance the circuit breaker.
+            # Treat it as "not_found" for breaker purposes (resets counter).
+            health.record(src_name, "not_found" if cause == "rate_limit" else "error")
+            return None, None
+        if out is None:
+            # Shutdown-before-attempt path.
             return None, None
 
         summary, sim = out
@@ -341,7 +389,7 @@ def lookup_reference(
             errored["flag"] = True
 
         try:
-            out = _retry(
+            out, cause = _retry(
                 lambda: src.check_url(urls),
                 stats=stats,
                 source=src_name,
@@ -349,12 +397,16 @@ def lookup_reference(
                 shutdown=shutdown,
             )
         except Exception:
-            out = (None, None, [])
+            out, cause = None, "error"
         rl.mark(src_name)
         if errored["flag"]:
+            note = ("rate-limit retries exhausted"
+                    if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
-                                 note="retries exhausted")
-            health.record(src_name, "error")
+                                 note=note)
+            health.record(src_name, "not_found" if cause == "rate_limit" else "error")
+            return None, None
+        if out is None:
             return None, None
 
         summary, sim, dead = out if len(out) == 3 else (*out, [])
@@ -589,6 +641,10 @@ def check_references(
         f"(jobs={jobs})",
         file=sys.stderr,
     )
+    print(
+        f"[ref-checker] Concurrency: {jobs} worker(s)",
+        file=sys.stderr,
+    )
 
     try:
         if jobs == 1 or len(to_query) <= 1:
@@ -598,11 +654,6 @@ def check_references(
                 if shutdown.requested():
                     reason = "keyboard_interrupt"
                     break
-                print(
-                    f"[ref-checker] started ref #{ref.index} ({i}/{len(to_query)}): "
-                    f"{ref.title or ref.raw[:60]!r}",
-                    file=sys.stderr,
-                )
                 try:
                     _, result, elapsed = _worker(ref)
                 except KeyboardInterrupt:
@@ -610,7 +661,8 @@ def check_references(
                     break
                 all_results[ref.index] = result
                 print(
-                    f"[ref-checker] completed ref #{ref.index} ({elapsed:.1f}s)",
+                    f"[ref-checker] completed ref #{ref.index} "
+                    f"({i}/{len(to_query)}, {elapsed:.1f}s)",
                     file=sys.stderr,
                 )
                 _write_sidecar()
@@ -649,11 +701,6 @@ def check_references(
                     submitted += 1
                     fut = pool.submit(_worker, ref)
                     futures[fut] = ref
-                    print(
-                        f"[ref-checker] started ref #{ref.index} ({submitted}/{total_q}): "
-                        f"{ref.title or ref.raw[:60]!r}",
-                        file=sys.stderr,
-                    )
 
                 for _ in range(min(window, total_q)):
                     _submit_next()
