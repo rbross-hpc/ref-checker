@@ -1,6 +1,7 @@
 """Multi-source reference lookup driver."""
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import threading
@@ -625,25 +626,49 @@ def check_references(
                     reason = "keyboard_interrupt"
                     break
         else:
-            # Concurrent path.
+            # Concurrent path with bounded submission window of jobs+1.
+            # Submit only a small window of refs upfront, then submit exactly
+            # one more each time a future completes. This keeps the log
+            # readable (started/completed lines interleave naturally), avoids
+            # queueing hundreds of futures that would need to be cancelled on
+            # SIGINT, and lets the circuit breaker actually prevent doomed
+            # queries from being dispatched.
+            window = jobs + 1
             with ThreadPoolExecutor(max_workers=jobs) as pool:
-                futures = {}
-                for i, ref in enumerate(to_query, start=1):
+                futures: dict = {}
+                submitted = 0
+                total_q = len(to_query)
+
+                def _submit_next() -> None:
+                    nonlocal submitted
+                    if submitted >= total_q:
+                        return
+                    if shutdown.requested():
+                        return
+                    ref = to_query[submitted]
+                    submitted += 1
                     fut = pool.submit(_worker, ref)
                     futures[fut] = ref
                     print(
-                        f"[ref-checker] submitted ref #{ref.index} ({i}/{len(to_query)}): "
+                        f"[ref-checker] started ref #{ref.index} ({submitted}/{total_q}): "
                         f"{ref.title or ref.raw[:60]!r}",
                         file=sys.stderr,
                     )
 
+                for _ in range(min(window, total_q)):
+                    _submit_next()
+
                 completed = 0
                 try:
-                    for fut in as_completed(futures):
+                    while futures:
+                        done_iter = as_completed(list(futures))
+                        try:
+                            fut = next(done_iter)
+                        except StopIteration:
+                            break
                         if shutdown.requested():
                             reason = "keyboard_interrupt"
-                            # Cancel any still-pending futures; wait for in-flight to finish.
-                            for f in futures:
+                            for f in list(futures):
                                 if not f.running() and not f.done():
                                     f.cancel()
                             break
@@ -665,9 +690,10 @@ def check_references(
                             elapsed = 0.0
                         all_results[ref.index] = result
                         completed += 1
+                        futures.pop(fut, None)
                         print(
                             f"[ref-checker] completed ref #{ref.index} "
-                            f"({completed}/{len(to_query)}, {elapsed:.1f}s)",
+                            f"({completed}/{total_q}, {elapsed:.1f}s)",
                             file=sys.stderr,
                         )
                         _write_sidecar()
@@ -679,14 +705,15 @@ def check_references(
                                 file=sys.stderr,
                             )
                             reason = _ALL_DISABLED_SENTINEL
-                            for f in futures:
+                            for f in list(futures):
                                 if not f.running() and not f.done():
                                     f.cancel()
                             break
+                        _submit_next()
                 finally:
                     # Drain any in-flight futures that raced past the break so
                     # their results also make it into all_results.
-                    for fut, ref in futures.items():
+                    for fut, ref in list(futures.items()):
                         if fut.done() and ref.index not in all_results:
                             try:
                                 _, result, _ = fut.result()
@@ -704,13 +731,28 @@ def check_references(
         # Final sidecar flush (belt-and-suspenders).
         _write_sidecar()
 
-        # Emit phase: print every ref in index order, once.
-        for ref in refs:
-            result = all_results.get(ref.index)
-            if result is None:
-                continue
-            print(format_result(ref, result, min_match, with_osti_id=with_osti_id))
-            print()
+        # Emit phase: print every ref in index order, once. Swallow
+        # BrokenPipeError so downstream pipes (`| tee`, `| head`) closing
+        # mid-emit doesn't produce noisy tracebacks.
+        try:
+            for ref in refs:
+                result = all_results.get(ref.index)
+                if result is None:
+                    continue
+                print(format_result(ref, result, min_match, with_osti_id=with_osti_id))
+                print()
+        except BrokenPipeError:
+            pass
+
+        # Belt-and-suspenders: flush stdout now and silence any late atexit
+        # flush by redirecting to /dev/null on BrokenPipeError.
+        try:
+            sys.stdout.flush()
+        except BrokenPipeError:
+            try:
+                sys.stdout = open(os.devnull, "w")
+            except Exception:
+                pass
 
         print("[ref-checker]", file=sys.stderr)
         if cached_count:
