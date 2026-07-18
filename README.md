@@ -111,7 +111,23 @@ Options:
 --with-osti-id            Append '(OSTI: <id>)' to each status line when OSTI
                           returned a confident hit (DOI match or title
                           similarity >= 0.90 after any year penalty)
+-j, --jobs N              Number of references to query in parallel (default: 3).
+                          Per-source polite-pool spacing is preserved regardless
+                          of N via strict reservation. Use --jobs 1 for strictly
+                          sequential execution.
 ```
+
+### Parallelism
+
+`ref-checker` queries multiple references concurrently via a thread pool
+(default 3 workers, tune with `-j N` / `--jobs N`). Per-source polite-pool
+spacing is preserved via a strict reservation-style rate limiter — three
+concurrent workers hitting OpenAlex still see calls spaced exactly the
+per-source delay apart. Progress and warnings stream to stderr live; the
+formatted result report is buffered and emitted to stdout in reference-index
+order at end-of-run, so `> results.txt` produces a clean deterministic report
+regardless of completion order. Use `--jobs 1` for strictly sequential
+execution (bit-for-bit reproducible ordering of side effects).
 
 ### Cached reference extraction
 

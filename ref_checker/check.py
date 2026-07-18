@@ -5,6 +5,7 @@ import signal
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
@@ -80,56 +81,80 @@ class SourceHealth:
         self._consecutive: dict[str, int] = {}
         self._disabled: set[str] = set()
         self._stats = stats
+        self._lock = threading.Lock()
 
     def record(self, source: str, status: str) -> None:
-        if status in ("hit_id", "hit_title", "not_found"):
-            self._consecutive[source] = 0
-            return
-        if status == "error":
-            self._consecutive[source] = self._consecutive.get(source, 0) + 1
-            if (
-                self._consecutive[source] >= self._threshold
-                and source not in self._disabled
-            ):
-                self._disabled.add(source)
-                reason = f"{self._threshold} consecutive errors"
-                if self._stats is not None:
-                    self._stats.record_disabled(source, reason)
-                print(
-                    f"[ref-checker] source '{source}' disabled for remainder of "
-                    f"session after {self._threshold} consecutive errors",
-                    file=sys.stderr,
-                )
+        newly_disabled = False
+        with self._lock:
+            if status in ("hit_id", "hit_title", "not_found"):
+                self._consecutive[source] = 0
+                return
+            if status == "error":
+                self._consecutive[source] = self._consecutive.get(source, 0) + 1
+                if (
+                    self._consecutive[source] >= self._threshold
+                    and source not in self._disabled
+                ):
+                    self._disabled.add(source)
+                    newly_disabled = True
+        if newly_disabled:
+            reason = f"{self._threshold} consecutive errors"
+            if self._stats is not None:
+                self._stats.record_disabled(source, reason)
+            print(
+                f"[ref-checker] source '{source}' disabled for remainder of "
+                f"session after {self._threshold} consecutive errors",
+                file=sys.stderr,
+            )
 
     def is_disabled(self, source: str) -> bool:
-        return source in self._disabled
+        with self._lock:
+            return source in self._disabled
 
     def all_scholarly_disabled(self) -> bool:
-        return all(name in self._disabled for name in _SCHOLARLY_SOURCE_NAMES)
+        with self._lock:
+            return all(name in self._disabled for name in _SCHOLARLY_SOURCE_NAMES)
 
 
 class _RateLimiter:
+    """Reservation-style per-source rate limiter.
+
+    Under contention (multiple worker threads querying the same source), wait()
+    atomically computes the next available slot and reserves it under a lock
+    before sleeping. This guarantees strict per-source spacing regardless of
+    concurrency: N threads calling OpenAlex will be spaced exactly `delay`
+    seconds apart, deterministically.
+    """
+
     def __init__(self, delays: dict[str, float], shutdown: _Shutdown | None = None) -> None:
         self._delays = delays
         self._last: dict[str, float] = {}
         self._shutdown = shutdown
+        self._lock = threading.Lock()
 
     def wait(self, source_name: str) -> None:
-        delay = self._delays.get(source_name, 1.0)
-        last = self._last.get(source_name)
-        if last is None:
-            return
-        elapsed = time.monotonic() - last
-        remaining = delay - elapsed
-        if remaining <= 0:
+        with self._lock:
+            delay = self._delays.get(source_name, 1.0)
+            last = self._last.get(source_name)
+            now = time.monotonic()
+            if last is None:
+                # First call to this source — no wait, reserve now.
+                self._last[source_name] = now
+                sleep_for = 0.0
+            else:
+                next_slot = max(now, last + delay)
+                self._last[source_name] = next_slot
+                sleep_for = next_slot - now
+        if sleep_for <= 0:
             return
         if self._shutdown is not None:
-            self._shutdown.wait(remaining)
+            self._shutdown.wait(sleep_for)
         else:
-            time.sleep(remaining)
+            time.sleep(sleep_for)
 
     def mark(self, source_name: str) -> None:
-        self._last[source_name] = time.monotonic()
+        # No-op: reservation is done in wait(). Kept for API compatibility.
+        pass
 
 
 def _retry(
@@ -433,14 +458,24 @@ def check_references(
     source_error_threshold: int = SourceHealth.THRESHOLD,
     pdf_name: str = "",
     with_osti_id: bool = False,
+    jobs: int = 3,
 ) -> str | None:
     """Look up every reference and print a human-readable summary.
+
+    When *jobs* > 1, refs are queried concurrently via a thread pool while
+    per-source rate limits are preserved via strict reservation. Formatted
+    result blocks are buffered and emitted to stdout in ref-index order at
+    end-of-run so the report is deterministic regardless of completion order.
+    Progress and warnings stream to stderr live.
 
     Returns:
       - None on normal completion
       - "keyboard_interrupt" if shutdown was requested via signal
       - "all_scholarly_sources_disabled" if the circuit breaker tripped everything
     """
+    if jobs < 1:
+        jobs = 1
+
     stats = _Stats()
     shutdown = _Shutdown()
     health = SourceHealth(threshold=source_error_threshold, stats=stats)
@@ -467,13 +502,42 @@ def check_references(
         if prior_result_dict is not None:
             all_results[idx] = _sidecar.result_from_dict(prior_result_dict)
 
+    # Plan phase: partition refs into cached / no-untried / to-query.
+    plans: dict[int, set[str] | None] = {}
+    to_query: list[Reference] = []
+    for ref in refs:
+        prior_entry = prior_entries.get(ref.index)
+        prior_result_dict = prior_entry.get("result") if prior_entry is not None else None
+        prior_result = all_results.get(ref.index)
+        prior_status = prior_result_dict.get("status") if prior_result_dict else None
+
+        if retry_all:
+            plan: set[str] | None = set(_ALL_SOURCE_NAMES)
+        else:
+            plan = _plan_ref_work(
+                prior_result, prior_status,
+                retry_closest=retry_closest,
+                retry_errored=retry_errored,
+            )
+
+        plans[ref.index] = plan
+
+        if plan is None:
+            # Fully satisfied — nothing to do.
+            cached_count += 1
+        elif plan == set() and prior_result is not None:
+            # Not satisfied, but no untried sources — keep prior.
+            cached_count += 1
+        else:
+            to_query.append(ref)
+
     prev_sigint = signal.getsignal(signal.SIGINT)
 
     def _sigint_handler(signum, frame):
         stage = shutdown.request()
         if stage == 1:
             print(
-                "[ref-checker] Shutting down — finishing current request and flushing "
+                "[ref-checker] Shutting down — finishing in-flight refs and flushing "
                 "sidecar. Press Ctrl-C again to abort immediately.",
                 file=sys.stderr,
             )
@@ -488,89 +552,147 @@ def check_references(
         prev_sigint = None
 
     total = len(refs)
+    sidecar_lock = threading.Lock()
+
+    def _write_sidecar() -> None:
+        if sidecar is None:
+            return
+        with sidecar_lock:
+            try:
+                _sidecar.write(sidecar, pdf_name, refs, all_results, min_match)
+            except Exception as exc:
+                print(
+                    f"[ref-checker] WARNING: sidecar write failed: {exc}",
+                    file=sys.stderr,
+                )
+
+    def _worker(ref: Reference) -> tuple[Reference, LookupResult, float]:
+        started = time.monotonic()
+        prior_result = all_results.get(ref.index)
+        result = lookup_reference(
+            ref,
+            delays=delays,
+            min_match=min_match,
+            stats=stats,
+            rate_limiter=rl,
+            health=health,
+            shutdown=shutdown,
+            sources_to_query=plans[ref.index],
+            prior_result=prior_result,
+        )
+        elapsed = time.monotonic() - started
+        return ref, result, elapsed
+
+    print(
+        f"[ref-checker] Planning: {cached_count} cached, {len(to_query)} to query "
+        f"(jobs={jobs})",
+        file=sys.stderr,
+    )
+
     try:
-        for i, ref in enumerate(refs, start=1):
-            if shutdown.requested():
-                reason = "keyboard_interrupt"
-                break
-
-            prior_entry = prior_entries.get(ref.index)
-            prior_result_dict = prior_entry.get("result") if prior_entry is not None else None
-            prior_result = all_results.get(ref.index)
-            prior_status = prior_result_dict.get("status") if prior_result_dict else None
-
-            if retry_all:
-                targets: set[str] | None = set(_ALL_SOURCE_NAMES)
-            else:
-                targets = _plan_ref_work(
-                    prior_result, prior_status,
-                    retry_closest=retry_closest,
-                    retry_errored=retry_errored,
-                )
-
-            if targets is None:
-                # Fully satisfied — replay from sidecar.
-                result = prior_result
-                cached_count += 1
+        if jobs == 1 or len(to_query) <= 1:
+            # Sequential path — behaviorally identical to pre-concurrency for
+            # jobs=1 and tests that pin jobs for determinism.
+            for i, ref in enumerate(to_query, start=1):
+                if shutdown.requested():
+                    reason = "keyboard_interrupt"
+                    break
                 print(
-                    f"[ref-checker] checking {i}/{total} (cached): "
+                    f"[ref-checker] started ref #{ref.index} ({i}/{len(to_query)}): "
                     f"{ref.title or ref.raw[:60]!r}",
                     file=sys.stderr,
                 )
-            elif targets == set() and prior_result is not None:
-                # Not satisfied, but no untried sources — keep prior.
-                result = prior_result
-                cached_count += 1
-                print(
-                    f"[ref-checker] checking {i}/{total}: "
-                    f"{ref.title or ref.raw[:60]!r} — "
-                    f"no untried sources; keeping prior result",
-                    file=sys.stderr,
-                )
-            else:
-                mode = "resuming" if prior_result is not None else "fresh"
-                print(
-                    f"[ref-checker] checking {i}/{total} ({mode}): "
-                    f"{ref.title or ref.raw[:60]!r}",
-                    file=sys.stderr,
-                )
-                result = lookup_reference(
-                    ref,
-                    delays=delays,
-                    min_match=min_match,
-                    stats=stats,
-                    rate_limiter=rl,
-                    health=health,
-                    shutdown=shutdown,
-                    sources_to_query=targets,
-                    prior_result=prior_result,
-                )
-
-            all_results[ref.index] = result
-            print(format_result(ref, result, min_match, with_osti_id=with_osti_id))
-            print()
-
-            if sidecar is not None:
                 try:
-                    _sidecar.write(sidecar, pdf_name, refs, all_results, min_match)
-                except Exception as exc:
+                    _, result, elapsed = _worker(ref)
+                except KeyboardInterrupt:
+                    reason = "keyboard_interrupt"
+                    break
+                all_results[ref.index] = result
+                print(
+                    f"[ref-checker] completed ref #{ref.index} ({elapsed:.1f}s)",
+                    file=sys.stderr,
+                )
+                _write_sidecar()
+                if health.all_scholarly_disabled():
                     print(
-                        f"[ref-checker] WARNING: sidecar write failed: {exc}",
+                        "[ref-checker] All scholarly sources are disabled — cannot "
+                        "continue. Flushing sidecar and exiting.",
+                        file=sys.stderr,
+                    )
+                    reason = _ALL_DISABLED_SENTINEL
+                    break
+                if shutdown.requested():
+                    reason = "keyboard_interrupt"
+                    break
+        else:
+            # Concurrent path.
+            with ThreadPoolExecutor(max_workers=jobs) as pool:
+                futures = {}
+                for i, ref in enumerate(to_query, start=1):
+                    fut = pool.submit(_worker, ref)
+                    futures[fut] = ref
+                    print(
+                        f"[ref-checker] submitted ref #{ref.index} ({i}/{len(to_query)}): "
+                        f"{ref.title or ref.raw[:60]!r}",
                         file=sys.stderr,
                     )
 
-            if health.all_scholarly_disabled():
-                print(
-                    "[ref-checker] All scholarly sources are disabled — cannot "
-                    "continue. Flushing sidecar and exiting.",
-                    file=sys.stderr,
-                )
-                reason = _ALL_DISABLED_SENTINEL
-                break
-
-            if shutdown.requested():
-                reason = "keyboard_interrupt"
-                break
+                completed = 0
+                try:
+                    for fut in as_completed(futures):
+                        if shutdown.requested():
+                            reason = "keyboard_interrupt"
+                            # Cancel any still-pending futures; wait for in-flight to finish.
+                            for f in futures:
+                                if not f.running() and not f.done():
+                                    f.cancel()
+                            break
+                        try:
+                            ref, result, elapsed = fut.result()
+                        except KeyboardInterrupt:
+                            reason = "keyboard_interrupt"
+                            break
+                        except Exception as exc:
+                            ref = futures[fut]
+                            print(
+                                f"[ref-checker] WARNING: ref #{ref.index} lookup crashed: {exc}",
+                                file=sys.stderr,
+                            )
+                            result = LookupResult(
+                                doi_attempted=ref.doi,
+                                arxiv_attempted=ref.arxiv_id,
+                            )
+                            elapsed = 0.0
+                        all_results[ref.index] = result
+                        completed += 1
+                        print(
+                            f"[ref-checker] completed ref #{ref.index} "
+                            f"({completed}/{len(to_query)}, {elapsed:.1f}s)",
+                            file=sys.stderr,
+                        )
+                        _write_sidecar()
+                        if health.all_scholarly_disabled():
+                            print(
+                                "[ref-checker] All scholarly sources are disabled — "
+                                "cannot continue. Cancelling pending refs, waiting "
+                                "for in-flight to finish, then flushing sidecar.",
+                                file=sys.stderr,
+                            )
+                            reason = _ALL_DISABLED_SENTINEL
+                            for f in futures:
+                                if not f.running() and not f.done():
+                                    f.cancel()
+                            break
+                finally:
+                    # Drain any in-flight futures that raced past the break so
+                    # their results also make it into all_results.
+                    for fut, ref in futures.items():
+                        if fut.done() and ref.index not in all_results:
+                            try:
+                                _, result, _ = fut.result()
+                                all_results[ref.index] = result
+                            except Exception:
+                                pass
     except KeyboardInterrupt:
         reason = "keyboard_interrupt"
     finally:
@@ -579,14 +701,17 @@ def check_references(
                 signal.signal(signal.SIGINT, prev_sigint)
             except (ValueError, OSError):
                 pass
-        if sidecar is not None:
-            try:
-                _sidecar.write(sidecar, pdf_name, refs, all_results, min_match)
-            except Exception as exc:
-                print(
-                    f"[ref-checker] WARNING: final sidecar write failed: {exc}",
-                    file=sys.stderr,
-                )
+        # Final sidecar flush (belt-and-suspenders).
+        _write_sidecar()
+
+        # Emit phase: print every ref in index order, once.
+        for ref in refs:
+            result = all_results.get(ref.index)
+            if result is None:
+                continue
+            print(format_result(ref, result, min_match, with_osti_id=with_osti_id))
+            print()
+
         print("[ref-checker]", file=sys.stderr)
         if cached_count:
             print(
