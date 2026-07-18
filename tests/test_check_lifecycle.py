@@ -811,3 +811,185 @@ class TestBoundedSubmission:
         data = json.loads(sc.read_text())
         assert data["schema_version"] == 2
         assert "1" in data["references"]
+
+
+# --------------------------------------------------------------------------
+# _format_duration
+# --------------------------------------------------------------------------
+
+
+class TestFormatDuration:
+    def test_seconds(self):
+        assert check_mod._format_duration(12.3) == "12.3s"
+
+    def test_zero(self):
+        assert check_mod._format_duration(0.0) == "0.0s"
+
+    def test_negative_clamped(self):
+        assert check_mod._format_duration(-5.0) == "0.0s"
+
+    def test_just_under_minute(self):
+        assert check_mod._format_duration(59.9) == "59.9s"
+
+    def test_minutes(self):
+        assert check_mod._format_duration(222.0) == "3m 42s"
+
+    def test_minute_boundary(self):
+        assert check_mod._format_duration(60.0) == "1m 00s"
+
+    def test_hours(self):
+        assert check_mod._format_duration(15092.0) == "4h 11m"
+
+    def test_hour_boundary(self):
+        assert check_mod._format_duration(3600.0) == "1h 00m"
+
+
+# --------------------------------------------------------------------------
+# Quota exhaustion + wait visibility + elapsed time
+# --------------------------------------------------------------------------
+
+
+class TestQuotaAndVisibility:
+    def test_quota_exhausted_disables_source_immediately(
+        self, stub_sources, tmp_path,
+    ):
+        from ref_checker.errors import RateLimited
+
+        call_count = {"n": 0}
+
+        def _quota_exhausted(*a, **kw):
+            call_count["n"] += 1
+            raise RateLimited(retry_after=15000.0)
+
+        stub_sources["openalex"].get_by_doi = _quota_exhausted
+        stub_sources["openalex"].search_by_title = _quota_exhausted
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+
+        data = json.loads(sc.read_text())
+        first_oa = data["references"]["1"]["result"]["per_source"].get("openalex")
+        assert first_oa is not None
+        assert first_oa["status"] == "error"
+        assert "quota exhausted" in (first_oa.get("note") or "").lower()
+
+        later_oa = data["references"]["5"]["result"]["per_source"].get("openalex")
+        assert later_oa is not None
+        assert later_oa["status"] == "disabled"
+
+        assert call_count["n"] == 1
+
+    def test_retry_after_at_threshold_still_retries(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _at_threshold(*a, **kw):
+            calls["n"] += 1
+            raise RateLimited(retry_after=check_mod._QUOTA_EXHAUSTED_THRESHOLD)
+
+        stub_sources["openalex"].get_by_doi = _at_threshold
+        stub_sources["openalex"].search_by_title = _at_threshold
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+
+        assert calls["n"] >= 3
+
+    def test_retry_after_just_above_threshold_disables(
+        self, stub_sources, tmp_path,
+    ):
+        from ref_checker.errors import RateLimited
+
+        calls = {"n": 0}
+
+        def _above_threshold(*a, **kw):
+            calls["n"] += 1
+            raise RateLimited(retry_after=check_mod._QUOTA_EXHAUSTED_THRESHOLD + 1.0)
+
+        stub_sources["openalex"].get_by_doi = _above_threshold
+        stub_sources["openalex"].search_by_title = _above_threshold
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+
+        assert calls["n"] == 1
+
+    def test_long_wait_prints_visibility_line(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _rate_limited_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RateLimited(retry_after=15.0)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rate_limited_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+        err = capsys.readouterr().err
+        assert "openalex: waiting" in err
+        assert "before retry" in err
+        assert "Retry-After=15s" in err
+
+    def test_short_wait_omits_visibility_line(
+        self, stub_sources, tmp_path, monkeypatch, capsys,
+    ):
+        from ref_checker.errors import RateLimited
+
+        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+
+        calls = {"n": 0}
+
+        def _rate_limited_then_ok(doi):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RateLimited(retry_after=1.0)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _rate_limited_then_ok
+
+        refs = [_ref(index=1, doi="10.1/x1")]
+        sc = tmp_path / "results.json"
+        check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+        err = capsys.readouterr().err
+        assert "openalex: waiting" not in err
+
+    def test_elapsed_time_appears_in_summary(
+        self, stub_sources, tmp_path, capsys,
+    ):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 3)]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        err = capsys.readouterr().err
+        assert "[ref-checker] Elapsed:" in err

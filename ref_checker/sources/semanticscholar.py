@@ -75,6 +75,12 @@ def _get_paper(paper_id_str: str) -> tuple[dict | None, float | None]:
     if resp.status_code in (404, 410):
         return None, None
     raise_for_rate_limit(resp, SOURCE_NAME)
+    if resp.status_code == 403:
+        from requests import HTTPError
+        raise HTTPError(
+            "403 Forbidden from Semantic Scholar — check SEMANTICSCHOLAR_API_KEY "
+            "(auth failure, not rate limit)"
+        )
     resp.raise_for_status()
     return None, None
 
@@ -118,5 +124,11 @@ def search_by_title(
     if resp.status_code == 404:
         return None, None
     raise_for_rate_limit(resp, SOURCE_NAME)
+    if resp.status_code == 403:
+        from requests import HTTPError
+        raise HTTPError(
+            "403 Forbidden from Semantic Scholar — check SEMANTICSCHOLAR_API_KEY "
+            "(auth failure, not rate limit)"
+        )
     resp.raise_for_status()
     return None, None

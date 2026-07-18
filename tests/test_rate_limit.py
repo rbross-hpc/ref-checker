@@ -275,3 +275,40 @@ class Test429RaisesRateLimited:
         monkeypatch.setattr(arxiv, "_session", lambda: session)
         with pytest.raises(RateLimited):
             arxiv.search_by_title("t")
+
+
+# --------------------------------------------------------------------------
+# Semantic Scholar 403 hint
+# --------------------------------------------------------------------------
+
+
+class TestSemanticScholar403Hint:
+    def test_get_by_doi_403_includes_hint(self, monkeypatch):
+        resp = _FakeResponse(403, headers={})
+
+        def _fake_get(url, params=None, headers=None, timeout=None):
+            return resp
+
+        import requests as _rq
+        monkeypatch.setattr(_rq, "get", _fake_get)
+        from requests import HTTPError
+        with pytest.raises(HTTPError) as ei:
+            semanticscholar.get_by_doi("10.1/x")
+        msg = str(ei.value)
+        assert "403" in msg
+        assert "SEMANTICSCHOLAR_API_KEY" in msg
+
+    def test_search_by_title_403_includes_hint(self, monkeypatch):
+        resp = _FakeResponse(403, headers={})
+
+        def _fake_get(url, params=None, headers=None, timeout=None):
+            return resp
+
+        import requests as _rq
+        monkeypatch.setattr(_rq, "get", _fake_get)
+        from requests import HTTPError
+        with pytest.raises(HTTPError) as ei:
+            semanticscholar.search_by_title("t")
+        msg = str(ei.value)
+        assert "403" in msg
+        assert "SEMANTICSCHOLAR_API_KEY" in msg

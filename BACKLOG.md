@@ -47,3 +47,15 @@ existing `_http.parse_retry_after` helper) and, when present, raise
 `RateLimited(retry_after=...)` so the outer retry loop waits the requested
 amount before hitting the mirror. Low priority: the current mirror-failover
 path already handles the common case.
+
+### Semantic Scholar: drop API key on 403 and retry unauthenticated
+
+When Semantic Scholar returns 403, the current fix (added alongside the
+quota-exhaustion work) surfaces a hint pointing at `SEMANTICSCHOLAR_API_KEY`
+in the error message. Better: on the first 403, emit a WARNING that the key
+appears invalid/revoked/unauthorized, drop the `x-api-key` header for the
+remainder of the session, and retry the current request unauthenticated
+(Semantic Scholar's public tier has stricter rate limits but still works).
+Requires a session-scoped mutable flag in `sources/semanticscholar.py` (or
+threading a `SourceHealth`-like handle through), plus a test that the second
+call omits the header once the flag is tripped.

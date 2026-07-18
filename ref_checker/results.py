@@ -65,6 +65,7 @@ class LookupResult:
         - note overwrites when non-None.
         """
         entry = self.per_source.get(source)
+        note_may_overwrite = True
         if entry is None:
             entry = {
                 "status": status,
@@ -79,6 +80,10 @@ class LookupResult:
             new_rank = _STATUS_PRECEDENCE.get(status, -1)
             if new_rank > old_rank:
                 entry["status"] = status
+            elif new_rank < old_rank:
+                # Do not let a lower-precedence status clobber the note
+                # that explained the higher-precedence status.
+                note_may_overwrite = False
 
         if queried_by and queried_by not in entry["queried_by"]:
             entry["queried_by"].append(queried_by)
@@ -89,7 +94,7 @@ class LookupResult:
                 entry["summary"] = summary
         elif summary is not None and entry.get("summary") is None:
             entry["summary"] = summary
-        if note is not None:
+        if note is not None and note_may_overwrite:
             entry["note"] = note
 
     def recompute_best(self, ref, min_match: float) -> None:
