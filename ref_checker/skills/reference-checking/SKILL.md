@@ -1,6 +1,6 @@
 ---
 name: reference-checking
-description: Verify bibliographic references in an academic paper against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. Accepts either a PDF (references extracted via LLM) or a JSON list you supply directly. Use when the user asks to audit, check, or find real sources for citations.
+description: Verify bibliographic references in an academic paper against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, and arXiv. Accepts either a PDF (references extracted via LLM) or a JSON list you supply directly. Use when the user asks to audit, check, or find real sources for citations.
 license: BSD-3-Clause
 metadata:
   audience: researchers, editors
@@ -23,7 +23,7 @@ databases. It accepts two equivalent input modes:
   extraction entirely. No PDF or LLM required.
 
 For either input, it looks up each reference across **OpenAlex**, **CrossRef**,
-**DBLP**, **Semantic Scholar**, and **arXiv** in priority order, and performs
+**OSTI**, **DBLP**, **Semantic Scholar**, and **arXiv** in priority order, and performs
 URL liveness checks for GitHub repositories and web resources. Results are
 printed color-coded (**OK** / **CLOSEST** / **NO MATCH**) with similarity
 scores and notes for each reference.
@@ -105,7 +105,7 @@ ref-checker lookup arxiv --id 1706.03762
 ```
 
 Prints a JSON object with `summary`, `similarity`, and `source` fields.
-Available sources: `openalex`, `crossref`, `dblp`, `semanticscholar`, `arxiv`.
+Available sources: `openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, `arxiv`.
 
 ## Resuming interrupted runs
 

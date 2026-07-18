@@ -6,7 +6,7 @@
 against live scholarly databases. References can be provided as a **PDF** (text
 extracted and parsed via LLM) or as a **JSON list** supplied directly, with
 both paths producing identical lookup and reporting behaviour. Each reference is
-checked against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv. For
+checked against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, and arXiv. For
 references that are software repositories or web resources (with no scholarly
 record), it performs URL liveness checks against GitHub and general web URLs.
 Results are printed in citation order with color-coded status indicators.
@@ -44,6 +44,7 @@ ref-checker/
         ├── __init__.py
         ├── openalex.py            # primary scholarly source
         ├── crossref.py            # secondary scholarly source
+        ├── osti.py                # DOE OSTI (technical reports + DOE journal articles)
         ├── dblp.py                # tertiary scholarly source (CS conferences/journals)
         ├── semanticscholar.py     # quaternary scholarly source
         ├── arxiv.py               # quinary / preprint source
@@ -158,7 +159,7 @@ For each reference, sources are tried in this order:
    (exact match, similarity = 1.0). Short-circuit on success.
 
 3. **Scholarly loop** (skipped entirely for url-only refs):
-   For each source in order — OpenAlex → CrossRef → DBLP → Semantic Scholar → arXiv:
+   For each source in order — OpenAlex → CrossRef → OSTI → DBLP → Semantic Scholar → arXiv:
    - DOI lookup (if `ref.doi`)
    - arXiv-ID lookup via the source's DOI or native arXiv endpoint
      (if `ref.arxiv_id`, skipping arXiv itself which was already tried)
@@ -192,6 +193,7 @@ When a candidate is found via title search (not DOI/arXiv ID):
   timer, so natural processing time counts toward the gap):
   - OpenAlex: 2.0 s
   - CrossRef: 2.0 s
+  - OSTI: 2.0 s
   - DBLP: 1.0 s
   - Semantic Scholar: 8.0 s
   - arXiv: 3.0 s
@@ -317,6 +319,7 @@ When neither is supplied, an error is printed and the command exits.
 --min-match F             CLOSEST threshold (default: 0.80)
 --delay-openalex S        Per-call delay in seconds (default: 2.0)
 --delay-crossref S        (default: 2.0)
+--delay-osti S            (default: 2.0)
 --delay-dblp S            (default: 1.0)
 --delay-semanticscholar S (default: 8.0)
 --delay-arxiv S           (default: 3.0)
@@ -327,6 +330,7 @@ When neither is supplied, an error is printed and the command exits.
 --no-resume               Disable resume (default: resume is ON)
 --retry-all               Re-query every ref regardless of sidecar
 --retry-closest           Also re-query CLOSEST refs on resume
+--with-osti-id            Append '(OSTI: <id>)' to each status line on confident OSTI hits
 ```
 
 ### Per-paper refs cache

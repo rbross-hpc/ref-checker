@@ -3,11 +3,11 @@
 Verify bibliographic references in an academic paper against live scholarly
 databases. `ref-checker` accepts two equivalent inputs — a **PDF** (references
 extracted via LLM) or a **JSON list** you supply directly — and looks each
-reference up across **OpenAlex**, **CrossRef**, **DBLP**, **Semantic Scholar**,
-and **arXiv** in sequence, performing URL liveness checks for software
-repositories and web resources. Results are printed in citation order with
-color-coded status. It also ships a bundled [Agent Skill](https://opencode.ai/docs/skills/)
-for AI coding assistants.
+reference up across **OpenAlex**, **CrossRef**, **OSTI**, **DBLP**,
+**Semantic Scholar**, and **arXiv** in sequence, performing URL liveness
+checks for software repositories and web resources. Results are printed in
+citation order with color-coded status. It also ships a bundled
+[Agent Skill](https://opencode.ai/docs/skills/) for AI coding assistants.
 
 For a detailed description of the design and implementation, see [PLAN.md](PLAN.md).
 
@@ -97,6 +97,7 @@ Options:
 --min-match F             Minimum similarity to report as CLOSEST (default: 0.80)
 --delay-openalex S        Seconds between OpenAlex calls (default: 2.0)
 --delay-crossref S        Seconds between CrossRef calls (default: 2.0)
+--delay-osti S            Seconds between OSTI calls (default: 2.0)
 --delay-dblp S            Seconds between DBLP calls (default: 1.0)
 --delay-semanticscholar S Seconds between Semantic Scholar calls (default: 8.0)
 --delay-arxiv S           Seconds between arXiv calls (default: 3.0)
@@ -107,6 +108,9 @@ Options:
 --no-resume               Disable resume — re-query every ref regardless of sidecar
 --retry-all               Re-query every ref even if sidecar marks it done
 --retry-closest           Also re-query refs previously reported as CLOSEST
+--with-osti-id            Append '(OSTI: <id>)' to each status line when OSTI
+                          returned a confident hit (DOI match or title
+                          similarity >= 0.90 after any year penalty)
 ```
 
 ### Cached reference extraction
@@ -168,6 +172,9 @@ ref-checker lookup openalex --title "Attention is all you need"
 ref-checker lookup crossref --doi 10.1145/...
 ref-checker lookup crossref --title "Attention is all you need"
 
+ref-checker lookup osti --doi 10.2172/1234567
+ref-checker lookup osti --title "Exascale Computing Project Final Report"
+
 ref-checker lookup semanticscholar --doi 10.1145/...
 ref-checker lookup semanticscholar --arxiv-id 1706.03762
 ref-checker lookup semanticscholar --title "Attention is all you need"
@@ -204,6 +211,9 @@ Each lookup prints a JSON object to stdout:
 ```
 [1] Vaswani et al., "Attention Is All You Need", 2017, (Neural Information Processing Systems)
     OK (0.99)  doi:10.48550/arxiv.1706.03762  [source: openalex]
+
+[1a] Smith et al., "Exascale Computing Project Final Report", 2024, (Argonne)   # with --with-osti-id
+    OK (1.00)  doi:10.2172/1234567  [source: osti]  (OSTI: 1234567)
 
 [2] Smith, "A Good Match", 2019, (Journal of Things)
     OK (0.93)  doi:10.1000/xyz123  [source: crossref]
@@ -292,8 +302,8 @@ At the end of a run, a query summary is printed to stderr:
    - GitHub liveness first (if a GitHub URL is present — skips scholarly
      lookups entirely for software/dataset references)
    - arXiv by ID (if an arXiv ID is present)
-   - OpenAlex → CrossRef → DBLP → Semantic Scholar → arXiv (title search skipped
-     when a prior source already returned ≥ 0.90 similarity)
+   - OpenAlex → CrossRef → OSTI → DBLP → Semantic Scholar → arXiv (title search
+     skipped when a prior source already returned ≥ 0.90 similarity)
    - Generic URL liveness as a last resort (for web-only references)
    - Lookups stop as soon as a perfect (1.0) match is found.
 

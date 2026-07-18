@@ -7,7 +7,7 @@ import os
 import sys
 
 from .. import check, extract, pdf
-from ..sources import arxiv, crossref, dblp, openalex, semanticscholar
+from ..sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
 from . import skill as skill_mod
 
 
@@ -45,6 +45,8 @@ def _build_check_parser(sub) -> None:
                    help="Seconds between OpenAlex calls (default: 2.0)")
     p.add_argument("--delay-crossref", type=float, default=2.0, metavar="S",
                    help="Seconds between CrossRef calls (default: 2.0)")
+    p.add_argument("--delay-osti", type=float, default=2.0, metavar="S",
+                   help="Seconds between OSTI calls (default: 2.0)")
     p.add_argument("--delay-dblp", type=float, default=1.0, metavar="S",
                    help="Seconds between DBLP calls (default: 1.0)")
     p.add_argument("--delay-semanticscholar", type=float, default=8.0, metavar="S",
@@ -77,6 +79,10 @@ def _build_check_parser(sub) -> None:
     p.add_argument("--source-error-threshold", type=int, default=3, metavar="N",
                    help="Disable a source for the rest of the session after N consecutive "
                         "errors (default: 3)")
+    p.add_argument("--with-osti-id", action="store_true",
+                   help="Append the OSTI record ID as '(OSTI: <id>)' to each status "
+                        "line when OSTI returned a confident hit (DOI match or title "
+                        "similarity >= 0.90 after any year penalty).")
 
 
 def _build_extract_parser(sub) -> None:
@@ -120,12 +126,12 @@ def _build_lookup_parser(sub) -> None:
     )
     lsub = p.add_subparsers(dest="source", required=True, metavar="SOURCE")
 
-    for name in ("openalex", "crossref", "dblp", "semanticscholar", "arxiv"):
+    for name in ("openalex", "crossref", "osti", "dblp", "semanticscholar", "arxiv"):
         sp = lsub.add_parser(name, help=f"Query {name}.")
         group = sp.add_mutually_exclusive_group(required=True)
         if name != "dblp":
             group.add_argument("--doi", help="DOI to look up")
-        if name not in ("crossref", "dblp"):
+        if name not in ("crossref", "dblp", "osti"):
             id_flag = "--id" if name == "arxiv" else "--arxiv-id"
             id_dest = "arxiv_id"
             id_help = "arXiv ID" if name == "arxiv" else "arXiv ID to look up"
@@ -181,6 +187,7 @@ def run_check(args) -> None:
     delays = {
         "openalex":        args.delay_openalex,
         "crossref":        args.delay_crossref,
+        "osti":            args.delay_osti,
         "dblp":            args.delay_dblp,
         "semanticscholar": args.delay_semanticscholar,
         "arxiv":           args.delay_arxiv,
@@ -281,6 +288,7 @@ def run_check(args) -> None:
         retry_errored=not args.no_retry_errored,
         source_error_threshold=args.source_error_threshold,
         pdf_name=source_name,
+        with_osti_id=args.with_osti_id,
     )
     if reason == "keyboard_interrupt":
         sys.exit(130)
@@ -339,6 +347,12 @@ def run_lookup(args) -> None:
             summary, sim = crossref.get_by_doi(args.doi)
         else:
             summary, sim = crossref.search_by_title(args.title)
+
+    elif source == "osti":
+        if args.doi:
+            summary, sim = osti.get_by_doi(args.doi)
+        else:
+            summary, sim = osti.search_by_title(args.title)
 
     elif source == "dblp":
         summary, sim = dblp.search_by_title(args.title)
