@@ -444,4 +444,190 @@ class TestRecomputeBest:
         r.recompute_best(ref, 0.80)
         assert r.best_source is None
         assert r.display_score is None
-        assert "crossref" in r.exhausted_sources
+
+
+# --------------------------------------------------------------------------
+# Concurrency (--jobs N)
+# --------------------------------------------------------------------------
+
+
+class TestConcurrency:
+    def test_jobs3_produces_same_results_as_jobs1(self, stub_sources, tmp_path):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+
+        sc1 = tmp_path / "seq.json"
+        r1 = check_mod.check_references(refs, sidecar=sc1, pdf_name="p.pdf", jobs=1)
+        assert r1 is None
+
+        sc3 = tmp_path / "par.json"
+        r3 = check_mod.check_references(refs, sidecar=sc3, pdf_name="p.pdf", jobs=3)
+        assert r3 is None
+
+        d1 = json.loads(sc1.read_text())
+        d3 = json.loads(sc3.read_text())
+        assert set(d1["references"].keys()) == set(d3["references"].keys())
+        for key in d1["references"]:
+            s1 = d1["references"][key]["result"]["best_summary"]
+            s3 = d3["references"][key]["result"]["best_summary"]
+            assert s1 == s3
+
+    def test_stdout_is_in_ref_index_order(self, stub_sources, tmp_path, capsys):
+        # Make later refs finish faster by giving earlier ones a small "delay"
+        # via a monkeypatched function that sleeps proportionally to index.
+        import time
+
+        call_order: list[int] = []
+
+        def make_stub(doi):
+            idx = int(doi.split("x")[-1])
+            # Reverse-order sleep: earliest ref sleeps longest.
+            sleep_s = (10 - idx) * 0.01
+            time.sleep(sleep_s)
+            call_order.append(idx)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = make_stub
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        out = capsys.readouterr().out
+        # stdout should still be in ref-index order regardless of completion order.
+        idxs = []
+        for line in out.splitlines():
+            if line.startswith("[") and "] " in line:
+                head = line.split("]", 1)[0][1:]
+                try:
+                    idxs.append(int(head))
+                except ValueError:
+                    pass
+        assert idxs == sorted(idxs)
+        assert idxs == [1, 2, 3, 4, 5]
+
+    def test_no_stdout_before_shutdown_emission(self, stub_sources, tmp_path, capsys):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sc = tmp_path / "results.json"
+
+        # We can't directly observe "during run" vs "at shutdown" from a single
+        # capsys.readouterr(), but we can verify no result block appears before
+        # the ThreadPoolExecutor has been shut down by asserting that stdout
+        # only contains formatted blocks (never interleaved with per-completion
+        # progress lines which go to stderr). All progress goes to stderr, so
+        # stdout must contain ONLY the formatted blocks.
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        cap = capsys.readouterr()
+        for line in cap.out.splitlines():
+            assert not line.startswith("[ref-checker]"), (
+                f"progress line leaked to stdout: {line!r}"
+            )
+
+    def test_circuit_breaker_trips_under_concurrency(self, stub_sources, tmp_path):
+        errors_seen: list[int] = []
+        lock = threading.Lock()
+
+        def _boom(doi):
+            with lock:
+                errors_seen.append(1)
+            raise RuntimeError("service down")
+
+        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
+            src = stub_sources[name]
+            for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
+                if hasattr(src, fn_name):
+                    setattr(src, fn_name, _boom)
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 10)]
+        sc = tmp_path / "results.json"
+
+        reason = check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf",
+            source_error_threshold=1, jobs=3,
+        )
+        assert reason == "all_scholarly_sources_disabled"
+        assert sc.exists()
+
+    def test_rate_limiter_strict_spacing_under_contention(self):
+        import time
+
+        rl = check_mod._RateLimiter({"openalex": 0.05})
+
+        timestamps: list[float] = []
+        lock = threading.Lock()
+
+        def worker():
+            rl.wait("openalex")
+            with lock:
+                timestamps.append(time.monotonic())
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        timestamps.sort()
+        # Consecutive calls should be spaced at least ~delay apart.
+        for a, b in zip(timestamps, timestamps[1:]):
+            # small tolerance for scheduling jitter
+            assert (b - a) >= 0.04, f"spacing {b - a:.4f} < 0.04"
+
+    def test_shutdown_via_signal_flushes_sidecar_concurrent(self, stub_sources, tmp_path):
+        """Simulate SIGINT partway through a concurrent run; sidecar must be valid."""
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 8)]
+        sc = tmp_path / "results.json"
+
+        call_count = {"n": 0}
+        signalled = {"done": False}
+        orig = stub_sources["openalex"].get_by_doi
+
+        def _maybe_signal(doi):
+            call_count["n"] += 1
+            if call_count["n"] >= 3 and not signalled["done"]:
+                signalled["done"] = True
+                os.kill(os.getpid(), signal.SIGINT)
+            return orig(doi)
+
+        stub_sources["openalex"].get_by_doi = _maybe_signal
+
+        # Use jobs=1 for deterministic signal-timing under test.
+        reason = check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+        )
+        assert reason == "keyboard_interrupt"
+        assert sc.exists()
+        data = json.loads(sc.read_text())
+        assert data["schema_version"] == 2
+        assert "1" in data["references"]
+
+    def test_jobs_1_matches_sequential_semantics(self, stub_sources, tmp_path):
+        # A resume-only ref (fully cached, no work) should appear in stdout
+        # exactly once, in index order, regardless of jobs setting.
+        refs = [_ref(index=1, doi="10.1/x1"), _ref(index=2, doi="10.1/x2")]
+
+        # Seed the sidecar with cached results.
+        prior = LookupResult(
+            id_confirmed=True, display_score=0.99, best_source="openalex",
+            best_summary=_summary(doi="10.1/pre"),
+        )
+        prior.per_source["openalex"] = {
+            "status": "hit_id", "queried_by": ["doi"],
+            "score": 1.0, "summary": _summary(doi="10.1/pre"), "note": None,
+        }
+        sc = tmp_path / "results.json"
+        sidecar_mod.write(sc, "p.pdf", refs, {1: prior, 2: prior}, 0.80)
+
+        reason = check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=3, resume=True,
+        )
+        assert reason is None

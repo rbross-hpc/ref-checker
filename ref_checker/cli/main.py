@@ -83,6 +83,10 @@ def _build_check_parser(sub) -> None:
                    help="Append the OSTI record ID as '(OSTI: <id>)' to each status "
                         "line when OSTI returned a confident hit (DOI match or title "
                         "similarity >= 0.90 after any year penalty).")
+    p.add_argument("-j", "--jobs", type=int, default=3, metavar="N",
+                   help="Number of references to query in parallel (default: 3). "
+                        "Per-source polite-pool spacing is preserved regardless of "
+                        "N. Use --jobs 1 for strictly sequential execution.")
 
 
 def _build_extract_parser(sub) -> None:
@@ -289,6 +293,7 @@ def run_check(args) -> None:
         source_error_threshold=args.source_error_threshold,
         pdf_name=source_name,
         with_osti_id=args.with_osti_id,
+        jobs=args.jobs,
     )
     if reason == "keyboard_interrupt":
         sys.exit(130)

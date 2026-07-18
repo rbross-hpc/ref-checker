@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from dataclasses import dataclass, field
 
 from .similarity import title_ratio
@@ -198,18 +199,23 @@ class _Stats:
     retries: dict[str, int] = field(default_factory=dict)
     exhausted: dict[str, int] = field(default_factory=dict)
     disabled: dict[str, str] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def record_query(self, source: str) -> None:
-        self.queries[source] = self.queries.get(source, 0) + 1
+        with self._lock:
+            self.queries[source] = self.queries.get(source, 0) + 1
 
     def record_retry(self, source: str) -> None:
-        self.retries[source] = self.retries.get(source, 0) + 1
+        with self._lock:
+            self.retries[source] = self.retries.get(source, 0) + 1
 
     def record_exhausted(self, source: str) -> None:
-        self.exhausted[source] = self.exhausted.get(source, 0) + 1
+        with self._lock:
+            self.exhausted[source] = self.exhausted.get(source, 0) + 1
 
     def record_disabled(self, source: str, reason: str) -> None:
-        self.disabled[source] = reason
+        with self._lock:
+            self.disabled[source] = reason
 
     def print_summary(self) -> None:
         all_sources = sorted(set(list(self.queries) + list(self.retries) + list(self.exhausted)))

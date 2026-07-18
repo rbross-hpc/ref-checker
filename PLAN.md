@@ -189,8 +189,11 @@ When a candidate is found via title search (not DOI/arXiv ID):
 
 ### Rate limiting and retries
 
-- Per-source minimum delay between consecutive calls (applied by a monotonic
-  timer, so natural processing time counts toward the gap):
+- Per-source minimum delay between consecutive calls (applied by a
+  reservation-style rate limiter under a `threading.Lock`: `wait()` atomically
+  computes the next available slot for a source and reserves it before
+  sleeping, so under concurrency N threads calling the same source are still
+  spaced exactly `delay` seconds apart):
   - OpenAlex: 2.0 s
   - CrossRef: 2.0 s
   - OSTI: 2.0 s
@@ -331,6 +334,7 @@ When neither is supplied, an error is printed and the command exits.
 --retry-all               Re-query every ref regardless of sidecar
 --retry-closest           Also re-query CLOSEST refs on resume
 --with-osti-id            Append '(OSTI: <id>)' to each status line on confident OSTI hits
+-j, --jobs N              Refs to query in parallel (default: 3; use 1 for strictly sequential)
 ```
 
 ### Per-paper refs cache
@@ -434,9 +438,18 @@ as `<set>` in the credential summary at startup.
   artifacts better than `pypdf`, but merges multi-column text — so `pypdf`
   remains primary. Future work: per-file engine selection or a pre-processing
   pass that detects column layout.
-- **Concurrency**: lookups are strictly sequential. For a 60-reference paper
-  with default delays, a full run takes 3–5 minutes. A per-source worker thread
-  pool (with shared rate-limiter) would reduce this significantly.
+- **Concurrency**: refs are queried concurrently via a `ThreadPoolExecutor`
+  (default 3 workers; `-j N` / `--jobs N` to tune, `--jobs 1` for strictly
+  sequential). Per-source polite-pool spacing is preserved via a
+  reservation-style `_RateLimiter`: `wait()` atomically computes the next
+  available slot for a source and reserves it under a lock, so N threads
+  calling the same source get deterministically spaced `delay` seconds apart.
+  `SourceHealth` (session circuit breaker) and `_Stats` are lock-protected for
+  thread-safe mutation. Formatted result blocks are buffered and emitted to
+  stdout in ref-index order at end-of-run so the report is deterministic
+  regardless of completion order; progress and warnings stream to stderr live.
+  On SIGINT the pool is shut down cleanly waiting for in-flight refs to
+  finish before flushing the sidecar.
 - **Rate limiter scope**: the rate limiter is shared across all references within
   a single `check_references()` call, enforcing inter-request delays correctly
   across reference boundaries. It does not persist across separate CLI invocations.
