@@ -346,7 +346,7 @@ class TestCheckReferences:
         assert reason is None
         assert sidecar.exists()
         data = json.loads(sidecar.read_text())
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == 3
         assert set(data["references"].keys()) == {"1", "2"}
 
     def test_all_sources_disabled_breaks_and_flushes(self, stub_sources, tmp_path):
@@ -444,7 +444,7 @@ class TestCheckReferences:
         assert reason == "keyboard_interrupt"
         assert sidecar.exists()
         data = json.loads(sidecar.read_text())
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == 3
         # We should have at least the first two refs saved (completed before signal).
         assert "1" in data["references"]
         assert "2" in data["references"]
@@ -658,7 +658,7 @@ class TestConcurrency:
         assert reason == "keyboard_interrupt"
         assert sc.exists()
         data = json.loads(sc.read_text())
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == 3
         assert "1" in data["references"]
 
     def test_jobs_1_matches_sequential_semantics(self, stub_sources, tmp_path):
@@ -863,7 +863,7 @@ class TestBoundedSubmission:
         assert reason is None
         assert sc.exists()
         data = json.loads(sc.read_text())
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == 3
         assert "1" in data["references"]
 
 

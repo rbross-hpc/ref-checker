@@ -4,12 +4,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 
 from .extract import Reference
 from .results import LookupResult
 
-SIDECAR_SCHEMA_VERSION = 2
+SIDECAR_SCHEMA_VERSION = 3
+_OUTDATED_SCHEMA_VERSIONS = {1, 2}
 
 
 def refs_hash(refs: list[Reference]) -> str:
@@ -100,7 +102,16 @@ def load(path: Path, refs: list[Reference]) -> tuple[dict[int, dict], bool]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}, False
-    if data.get("schema_version") != SIDECAR_SCHEMA_VERSION:
+    stored_version = data.get("schema_version")
+    if stored_version != SIDECAR_SCHEMA_VERSION:
+        if stored_version in _OUTDATED_SCHEMA_VERSIONS:
+            print(
+                f"[ref-checker] WARNING: sidecar at {path} is schema "
+                f"v{stored_version} (current: v{SIDECAR_SCHEMA_VERSION}); "
+                f"discarding and re-querying all refs. Delete the old file "
+                f"to silence this warning.",
+                file=sys.stderr,
+            )
         return {}, False
     stored_hash = data.get("refs_hash")
     current_hash = refs_hash(refs)

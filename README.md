@@ -167,6 +167,9 @@ are replayed from the sidecar instantly and failed refs are re-queried.
 If the reference list changes (e.g., after `--re-extract`), the sidecar detects
 the mismatch via a content hash and falls back to a full re-run.
 
+The sidecar format is versioned; ref-checker discards and regenerates sidecars
+written by incompatible versions (a WARNING is printed when this happens).
+
 ### Extract references from a PDF only
 
 Writes `<stem>.refs.md` (numbered raw text) and `<stem>.refs.json` (structured
