@@ -37,7 +37,26 @@ _RETRY_BACKOFF = (5.0, 10.0, 15.0)
 
 _MAX_RETRY_AFTER = 60.0
 
+_QUOTA_EXHAUSTED_THRESHOLD = 300.0
+
+_WAIT_VISIBILITY_THRESHOLD = 10.0
+
 _ALL_DISABLED_SENTINEL = "all_scholarly_sources_disabled"
+
+
+def _format_duration(secs: float) -> str:
+    """Adaptive human-friendly duration: 12.3s / 3m 42s / 4h 11m."""
+    if secs < 0:
+        secs = 0.0
+    if secs < 60.0:
+        return f"{secs:.1f}s"
+    if secs < 3600.0:
+        m = int(secs // 60)
+        s = int(secs - m * 60)
+        return f"{m}m {s:02d}s"
+    h = int(secs // 3600)
+    m = int((secs - h * 3600) // 60)
+    return f"{h}h {m:02d}m"
 
 
 class _Shutdown:
@@ -115,6 +134,25 @@ class SourceHealth:
         with self._lock:
             return source in self._disabled
 
+    def disable(self, source: str, reason: str) -> None:
+        """Force-disable *source* immediately, bypassing the 3-strike counter.
+
+        Idempotent — no-op if already disabled. Used for definitive signals
+        like a server-issued long Retry-After indicating quota exhaustion.
+        """
+        newly_disabled = False
+        with self._lock:
+            if source not in self._disabled:
+                self._disabled.add(source)
+                newly_disabled = True
+        if newly_disabled:
+            if self._stats is not None:
+                self._stats.record_disabled(source, reason)
+            print(
+                f"[ref-checker] source '{source}' disabled: {reason}",
+                file=sys.stderr,
+            )
+
     def all_scholarly_disabled(self) -> bool:
         with self._lock:
             return all(name in self._disabled for name in _SCHOLARLY_SOURCE_NAMES)
@@ -169,7 +207,7 @@ def _retry(
     on_exhausted: Callable[[], None] | None = None,
     shutdown: _Shutdown | None = None,
 ):
-    """Call *fn* with retries; return (result_or_None, cause).
+    """Call *fn* with retries; return (result_or_None, cause, retry_after).
 
     ``result_or_None`` is whatever *fn* returned on success (a tuple, per the
     source contract), or ``None`` on exhaustion / shutdown.
@@ -181,33 +219,68 @@ def _retry(
       - ``"rate_limit"`` on exhaustion where *every* failed attempt was a
         :class:`RateLimited`. The caller should not count this toward the
         circuit breaker.
+      - ``"quota_exhausted"`` when a single :class:`RateLimited` carried a
+        ``retry_after`` larger than :data:`_QUOTA_EXHAUSTED_THRESHOLD`. No
+        further attempts are made — the caller should immediately disable
+        the source for the session.
+
+    ``retry_after`` is the server-supplied Retry-After value (seconds) that
+    triggered ``"quota_exhausted"``; ``None`` otherwise.
 
     ``RateLimited.retry_after`` (when present, capped at ``_MAX_RETRY_AFTER``)
-    supersedes the default ``_RETRY_BACKOFF`` schedule.
+    supersedes the default ``_RETRY_BACKOFF`` schedule for in-threshold waits.
     """
     last_exc: Exception | None = None
     all_rate_limited = True
     any_attempted = False
+
+    def _do_wait(wait: float, reason: str) -> bool:
+        """Sleep for *wait* seconds; return True if shutdown requested."""
+        if wait >= _WAIT_VISIBILITY_THRESHOLD:
+            print(
+                f"[ref-checker] {source}: waiting {_format_duration(wait)} "
+                f"before retry ({reason})",
+                file=sys.stderr,
+            )
+        if shutdown is not None:
+            return shutdown.wait(wait)
+        time.sleep(wait)
+        return False
+
     for attempt in range(tries):
         if shutdown is not None and shutdown.requested():
-            return None, None
+            return None, None, None
         any_attempted = True
         try:
-            return fn(), None
+            return fn(), None, None
         except RateLimited as exc:
             last_exc = exc
+            if (
+                exc.retry_after is not None
+                and exc.retry_after > _QUOTA_EXHAUSTED_THRESHOLD
+            ):
+                if stats and source:
+                    stats.record_exhausted(source)
+                if on_exhausted:
+                    on_exhausted()
+                print(
+                    f"[ref-checker] WARNING: {source} reports quota exhausted "
+                    f"(Retry-After={exc.retry_after:.0f}s, "
+                    f"~{_format_duration(exc.retry_after)}) — abandoning source",
+                    file=sys.stderr,
+                )
+                return None, "quota_exhausted", exc.retry_after
             if attempt < tries - 1:
                 if exc.retry_after is not None:
                     wait = min(exc.retry_after, _MAX_RETRY_AFTER)
+                    reason = f"Retry-After={exc.retry_after:.0f}s"
                 else:
                     wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+                    reason = "backoff"
                 if stats and source:
                     stats.record_retry(source)
-                if shutdown is not None:
-                    if shutdown.wait(wait):
-                        return None, None
-                else:
-                    time.sleep(wait)
+                if _do_wait(wait, reason):
+                    return None, None, None
         except Exception as exc:
             last_exc = exc
             all_rate_limited = False
@@ -215,13 +288,10 @@ def _retry(
                 wait = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
                 if stats and source:
                     stats.record_retry(source)
-                if shutdown is not None:
-                    if shutdown.wait(wait):
-                        return None, None
-                else:
-                    time.sleep(wait)
+                if _do_wait(wait, "backoff"):
+                    return None, None, None
     if not any_attempted:
-        return None, None
+        return None, None, None
     if stats and source:
         stats.record_exhausted(source)
     if on_exhausted:
@@ -233,7 +303,7 @@ def _retry(
         + (f": {last_exc}" if last_exc else ""),
         file=sys.stderr,
     )
-    return None, cause
+    return None, cause, None
 
 
 def _plan_ref_work(
@@ -337,7 +407,7 @@ def lookup_reference(
         def _on_exhausted() -> None:
             errored["flag"] = True
 
-        out, cause = _retry(
+        out, cause, retry_after = _retry(
             lambda: fn(*args),
             stats=stats,
             source=src_name,
@@ -346,6 +416,19 @@ def lookup_reference(
         )
         rl.mark(src_name)
         if errored["flag"]:
+            if cause == "quota_exhausted":
+                note = (
+                    f"quota exhausted (Retry-After={retry_after:.0f}s, "
+                    f"~{_format_duration(retry_after or 0.0)})"
+                )
+                result.record_source(src_name, "error", queried_by=queried_by,
+                                     note=note)
+                reason = (
+                    f"server requested Retry-After={retry_after:.0f}s "
+                    f"(~{_format_duration(retry_after or 0.0)}) — quota exhausted"
+                )
+                health.disable(src_name, reason)
+                return None, None
             note = ("rate-limit retries exhausted"
                     if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
@@ -389,7 +472,7 @@ def lookup_reference(
             errored["flag"] = True
 
         try:
-            out, cause = _retry(
+            out, cause, retry_after = _retry(
                 lambda: src.check_url(urls),
                 stats=stats,
                 source=src_name,
@@ -397,9 +480,22 @@ def lookup_reference(
                 shutdown=shutdown,
             )
         except Exception:
-            out, cause = None, "error"
+            out, cause, retry_after = None, "error", None
         rl.mark(src_name)
         if errored["flag"]:
+            if cause == "quota_exhausted":
+                note = (
+                    f"quota exhausted (Retry-After={retry_after:.0f}s, "
+                    f"~{_format_duration(retry_after or 0.0)})"
+                )
+                result.record_source(src_name, "error", queried_by=queried_by,
+                                     note=note)
+                reason = (
+                    f"server requested Retry-After={retry_after:.0f}s "
+                    f"(~{_format_duration(retry_after or 0.0)}) — quota exhausted"
+                )
+                health.disable(src_name, reason)
+                return None, None
             note = ("rate-limit retries exhausted"
                     if cause == "rate_limit" else "retries exhausted")
             result.record_source(src_name, "error", queried_by=queried_by,
@@ -529,6 +625,7 @@ def check_references(
     if jobs < 1:
         jobs = 1
 
+    t0 = time.monotonic()
     stats = _Stats()
     shutdown = _Shutdown()
     health = SourceHealth(threshold=source_error_threshold, stats=stats)
@@ -807,6 +904,10 @@ def check_references(
                 f"[ref-checker] Resumed: {cached_count} ref(s) loaded from sidecar",
                 file=sys.stderr,
             )
+        print(
+            f"[ref-checker] Elapsed: {_format_duration(time.monotonic() - t0)}",
+            file=sys.stderr,
+        )
         stats.print_summary()
         if reason == "keyboard_interrupt":
             print("[ref-checker] Interrupted — partial results saved.", file=sys.stderr)
