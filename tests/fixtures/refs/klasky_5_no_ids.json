@@ -1,0 +1,226 @@
+[
+  {
+    "index": 1,
+    "raw": "Bouteiller, A., Herault, T., Cao, Q., Schuchart, J., and Bosilca , G. (2025). PaRSEC: scalability, ﬂexibility, and hybrid architecture support for tas k-based applications in ECP. Int. J. High Perform Comput Appl. 39, 147–166. doi: 10.1177/10943420241290520",
+    "title": "PaRSEC: scalability, flexibility, and hybrid architecture support for task-based applications in ECP",
+    "authors": [
+      "Aurelien Bouteiller",
+      "Thomas Herault",
+      "Qinglei Cao",
+      "Joshua Schuchart",
+      "George Bosilca"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Int. J. High Perform Comput Appl.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 2,
+    "raw": "Dao, T. (2023). Flashattention-2: faster attention with bet ter parallelism and work partitioning. arXiv. [preprint]. arXiv:2307.08691. doi: 10.48550/arXiv.2307.0 8691",
+    "title": "FlashAttention-2: faster attention with better parallelism and work partitioning",
+    "authors": [
+      "Tri Dao"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "arXiv",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 3,
+    "raw": "Di, S., Liu, J., Zhao, K., Liang, X., Underwood, R., Zhang, Z. , et al. (2025). A survey on error-bounded lossy compression for scientiﬁc datasets. ACM Comput. Surv. 57, 1–38. doi: 10.1145/3733104",
+    "title": "A survey on error-bounded lossy compression for scientific datasets",
+    "authors": [
+      "Sheng Di",
+      "Jinyang Liu",
+      "Kai Zhao",
+      "Xin Liang",
+      "Ryan Underwood",
+      "Zizhong Zhang"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ACM Comput. Surv.",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 4,
+    "raw": "Dosovitskiy, A. (2020). An image is worth 16x16 words: trans formers for image recognition at scale. arXiv. [preprint]. arXiv:2010.11929. doi: 10.48550/arXiv.2010.11929",
+    "title": "An image is worth 16x16 words: transformers for image recognition at scale",
+    "authors": [
+      "Alexey Dosovitskiy"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "arXiv",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 5,
+    "raw": "Goldman, O., Caciularu, A., Eyal, M., Cao, K., Szpektor, I., and Ts arfaty, R. (2024). Unpacking tokenization: evaluating text compression and its c orrelation with model performance. arXiv [preprint]. arXiv:2403.06265. doi: 10.48550/arXiv.2403.0 6265",
+    "title": "Unpacking tokenization: evaluating text compression and its correlation with model performance",
+    "authors": [
+      "Omer Goldman",
+      "Avi Caciularu",
+      "Matan Eyal",
+      "Kexin Cao",
+      "Ido Szpektor",
+      "Reut Tsarfaty"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "arXiv",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 6,
+    "raw": "Gong, Q., Ainsworth, M., Chen, J., Liang, X., Zhu, L., Klasky, E ., et al. (2025). “Stability-preserving lossy compression for large-scale partial diﬀerential equations, ” in Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (St. Louis: https://impact.ornl.gov/ en/publications/stability-preserving-lossy-compression-fo r-large-scale-partialdi/Association for Computing Machinery, Inc), 1992–2005. d oi: 10.1145/3712285.375 9878",
+    "title": "Stability-preserving lossy compression for large-scale partial differential equations",
+    "authors": [
+      "Qi Gong",
+      "Mark Ainsworth",
+      "Jieyang Chen",
+      "Xin Liang",
+      "Lipeng Zhu",
+      "Ewa Klasky"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": "https://impact.ornl.gov/en/publications/stability-preserving-lossy-compression-for-large-scale-partialdi/"
+  },
+  {
+    "index": 7,
+    "raw": "Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., e t al. (2023). “Eﬃcient memory management for large language model serving with pageda ttention, ” in Proceedings of the 29th Symposium on Operating Systems Principles (New York, NY: Association for Computing Machinery), 611–626. doi: 10.114 5/3600006.3613165",
+    "title": "Efficient memory management for large language model serving with PagedAttention",
+    "authors": [
+      "Woosuk Kwon",
+      "Zhuohan Li",
+      "Shiwei Zhuang",
+      "Yunsheng Sheng",
+      "Lianmin Zheng",
+      "C. H. Yu"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the 29th Symposium on Operating Systems Principles",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 8,
+    "raw": "Mo, S. (2025). “Scaling diﬀusion mamba with bidirectional SSMs for eﬃcient 3D shape generation, ” inProceedings of the AAAI Conference on Artiﬁcial Intelligence , Vol. 39 (AAAI Press), 19475–83. doi: 10.1609/aaai.v39i18.34144",
+    "title": "Scaling diffusion mamba with bidirectional SSMs for efficient 3D shape generation",
+    "authors": [
+      "Shentong Mo"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the AAAI Conference on Artificial Intelligence",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 9,
+    "raw": "Oberkampf, W. L., and Roy, C. J. (2010). Veriﬁcation and Validation in Scientiﬁc Computing . Cambridge: Cambridge University Press. doi: 10.1017/CBO9780511760396",
+    "title": "Verification and Validation in Scientific Computing",
+    "authors": [
+      "William L. Oberkampf",
+      "Christopher J. Roy"
+    ],
+    "year": 2010,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Cambridge University Press",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 10,
+    "raw": "Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon , S., and Poole, B. (2020). Score-based generative modeling through stochasti c diﬀerential equations. arXiv [preprint]. arXiv:2011.13456. doi: 10.48550/arXiv.2011.1 3456",
+    "title": "Score-based generative modeling through stochastic differential equations",
+    "authors": [
+      "Yang Song",
+      "Jascha Sohl-Dickstein",
+      "Diederik P. Kingma",
+      "Abhishek Kumar",
+      "Stefano Ermon",
+      "Ben Poole"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "arXiv",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 11,
+    "raw": "Tampouratzis, N., Papaefstathiou, I., Gomez-Lopez, G., et al. (20 25). Distributed fast and accurate simulation platform for advanced ARM- and RISC-V-based HPC systems. J. Supercomputing 81:1484. doi: 10.1007/s11227-025-07972-7",
+    "title": "Distributed fast and accurate simulation platform for advanced ARM- and RISC-V-based HPC systems",
+    "authors": [
+      "N. Tampouratzis",
+      "I. Papaefstathiou",
+      "G. Gomez-Lopez"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "J. Supercomputing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 12,
+    "raw": "Wang, X., Choi, J.-Y., Kurihaya, T., Lyngaas, I., Yoon, H.-J ., Xiao, X., et al. (2025). “ORBIT-2: Scaling exascale vision foundation models f or weather and climate downscaling, ” in Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC ’25)(New York, NY: Association for Computing Machinery), 86–98. doi: 10.1145/3712285.377198 9",
+    "title": "ORBIT-2: Scaling exascale vision foundation models for weather and climate downscaling",
+    "authors": [
+      "Xingjian Wang",
+      "J.-Y. Choi",
+      "T. Kurihaya",
+      "I. Lyngaas",
+      "H.-J. Yoon",
+      "X. Xiao"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 13,
+    "raw": "Wang, X., Liu, S., Tsaris, A., Choi, J. Y., Aji, A. M., Fan, M., et al. (2024). “ORBIT: Oak ridge base foundation model for earth system pred ictability, ” inSC24: International Conference for High Performance Computing, Networking, S torage and Analysis (Atlanta, GA: IEEE), 1–11. doi: 10.1109/SC41406.2024.00007",
+    "title": "ORBIT: Oak ridge base foundation model for earth system predictability",
+    "authors": [
+      "Xingjian Wang",
+      "S. Liu",
+      "A. Tsaris",
+      "J. Y. Choi",
+      "A. M. Aji",
+      "M. Fan"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SC24: International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": null
+  }
+]
