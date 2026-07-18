@@ -40,6 +40,8 @@ class TestFixtureIntegrity:
         assert "dorier_mofka.json" in names
         assert "cruz_zombie.json" in names
         assert "wan_e3smv2.json" in names
+        # Derived (klasky_5 with identifiers scrubbed):
+        assert "klasky_5_no_ids.json" in names
 
     @pytest.mark.parametrize("path", _all_fixture_paths(),
                              ids=lambda p: p.name)
@@ -79,6 +81,44 @@ class TestBigFixtureIsBig:
             (FIXTURES_DIR / "dorier_mofka.json").read_text(encoding="utf-8")
         )
         assert len(data) >= 15
+
+
+class TestKlaskyNoIdsDerivation:
+    """klasky_5_no_ids.json must match klasky_5.json in every field except
+    doi and arxiv_id, which must both be null in the derived fixture."""
+
+    def _load_pair(self):
+        base = json.loads(
+            (FIXTURES_DIR / "klasky_5.json").read_text(encoding="utf-8")
+        )
+        derived = json.loads(
+            (FIXTURES_DIR / "klasky_5_no_ids.json").read_text(encoding="utf-8")
+        )
+        return base, derived
+
+    def test_same_ref_count(self):
+        base, derived = self._load_pair()
+        assert len(base) == len(derived)
+
+    def test_doi_and_arxiv_id_scrubbed(self):
+        _, derived = self._load_pair()
+        for r in derived:
+            assert r.get("doi") is None, f"ref #{r.get('index')} has non-null doi"
+            assert r.get("arxiv_id") is None, (
+                f"ref #{r.get('index')} has non-null arxiv_id"
+            )
+
+    def test_other_fields_preserved(self):
+        base, derived = self._load_pair()
+        base_by_idx = {r.get("index"): r for r in base}
+        for d in derived:
+            b = base_by_idx.get(d.get("index"))
+            assert b is not None
+            for field in ("title", "authors", "year", "venue", "url",
+                          "github_url", "raw"):
+                assert d.get(field) == b.get(field), (
+                    f"ref #{d.get('index')} field {field!r} diverged from base"
+                )
 
 
 class TestEdgeCases:

@@ -71,6 +71,32 @@ For each fixture below: source PDF URL, DOI, OSTI ID, license, and the
 - **License:** CC-BY 4.0
 - **Source URL:** https://www.osti.gov/servlets/purl/2587778
 
+### `refs/klasky_5_no_ids.json` (13 references, derived)
+
+Programmatically derived from `klasky_5.json` by setting every `doi` and
+`arxiv_id` field to `null`. All other fields (title, authors, year, venue,
+raw) are preserved.
+
+Purpose: exercise the title-search path across all sources on a set of refs
+that ARE findable but must be resolved without any identifier hints. Useful
+as a "happy path for title-search" complement to `edge_cases.json` (title-
+search failures) and `mixed_small.json` (mixed modes).
+
+Regenerate with:
+
+```bash
+python -c "
+import json, pathlib
+src = pathlib.Path('tests/fixtures/refs/klasky_5.json')
+dst = pathlib.Path('tests/fixtures/refs/klasky_5_no_ids.json')
+data = json.loads(src.read_text())
+for r in data:
+    r['doi'] = None
+    r['arxiv_id'] = None
+dst.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n')
+"
+```
+
 ### `refs/mixed_small.json` (10 references, hand-crafted)
 
 Curated smoke-test set exercising every lookup mode: DOI, arXiv ID,
