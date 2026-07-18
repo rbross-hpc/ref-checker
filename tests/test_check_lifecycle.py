@@ -631,3 +631,98 @@ class TestConcurrency:
             refs, sidecar=sc, pdf_name="p.pdf", jobs=3, resume=True,
         )
         assert reason is None
+
+
+# --------------------------------------------------------------------------
+# Bounded submission window (fix/bounded-submission)
+# --------------------------------------------------------------------------
+
+
+class TestBoundedSubmission:
+    def test_in_flight_never_exceeds_jobs_plus_one(self, stub_sources, tmp_path):
+        import time
+
+        jobs = 3
+        window = jobs + 1
+        in_flight = {"n": 0, "max": 0}
+        lock = threading.Lock()
+        release = threading.Event()
+
+        def _slow(doi):
+            with lock:
+                in_flight["n"] += 1
+                if in_flight["n"] > in_flight["max"]:
+                    in_flight["max"] = in_flight["n"]
+            release.wait(timeout=2.0)
+            with lock:
+                in_flight["n"] -= 1
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _slow
+
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 21)]
+        sc = tmp_path / "results.json"
+
+        def _releaser():
+            time.sleep(0.15)
+            release.set()
+
+        t = threading.Thread(target=_releaser)
+        t.start()
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=jobs)
+        t.join()
+
+        assert in_flight["max"] <= window, (
+            f"max in-flight was {in_flight['max']}, expected <= {window}"
+        )
+
+    def test_started_log_lines_are_in_submission_order(
+        self, stub_sources, tmp_path, capsys
+    ):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 8)]
+        sc = tmp_path / "results.json"
+
+        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        err = capsys.readouterr().err
+
+        started_indices: list[int] = []
+        for line in err.splitlines():
+            if "started ref #" in line:
+                tail = line.split("started ref #", 1)[1]
+                num = tail.split(" ", 1)[0]
+                started_indices.append(int(num))
+
+        assert started_indices == sorted(started_indices)
+        assert started_indices == [1, 2, 3, 4, 5, 6, 7]
+
+    def test_broken_pipe_on_emit_is_swallowed(
+        self, stub_sources, tmp_path, monkeypatch, capsys
+    ):
+        stub_sources["openalex"].get_by_doi = (
+            lambda doi: (_summary(doi=doi), 1.0)
+        )
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sc = tmp_path / "results.json"
+
+        import builtins
+        real_print = builtins.print
+
+        def _bp_print(*args, **kwargs):
+            if kwargs.get("file") is None or kwargs.get("file") is __import__("sys").stdout:
+                raise BrokenPipeError(32, "Broken pipe")
+            return real_print(*args, **kwargs)
+
+        monkeypatch.setattr(builtins, "print", _bp_print)
+
+        reason = check_mod.check_references(
+            refs, sidecar=sc, pdf_name="p.pdf", jobs=3,
+        )
+
+        assert reason is None
+        assert sc.exists()
+        data = json.loads(sc.read_text())
+        assert data["schema_version"] == 2
+        assert "1" in data["references"]
