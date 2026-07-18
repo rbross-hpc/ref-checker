@@ -71,6 +71,12 @@ def _build_check_parser(sub) -> None:
                    help="Re-query every ref even if sidecar marks it done")
     p.add_argument("--retry-closest", action="store_true",
                    help="Also re-query refs previously reported as CLOSEST")
+    p.add_argument("--no-retry-errored", action="store_true",
+                   help="On resume, do NOT retry sources previously marked as errored "
+                        "(default: retry them). Disabled sources are always retried.")
+    p.add_argument("--source-error-threshold", type=int, default=3, metavar="N",
+                   help="Disable a source for the rest of the session after N consecutive "
+                        "errors (default: 3)")
 
 
 def _build_extract_parser(sub) -> None:
@@ -264,7 +270,7 @@ def run_check(args) -> None:
             )
 
     print(f"[ref-checker] Checking {len(refs)} reference(s)...\n", file=sys.stderr)
-    check.check_references(
+    reason = check.check_references(
         refs,
         delays=delays,
         min_match=args.min_match,
@@ -272,8 +278,14 @@ def run_check(args) -> None:
         resume=resume,
         retry_all=args.retry_all,
         retry_closest=args.retry_closest,
+        retry_errored=not args.no_retry_errored,
+        source_error_threshold=args.source_error_threshold,
         pdf_name=source_name,
     )
+    if reason == "keyboard_interrupt":
+        sys.exit(130)
+    if reason == "all_scholarly_sources_disabled":
+        sys.exit(2)
 
 
 def run_extract(args) -> None:
@@ -358,11 +370,15 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.command == "check":
-        run_check(args)
-    elif args.command == "extract":
-        run_extract(args)
-    elif args.command == "lookup":
-        run_lookup(args)
-    elif args.command == "skill":
-        skill_mod.run_skill(args)
+    try:
+        if args.command == "check":
+            run_check(args)
+        elif args.command == "extract":
+            run_extract(args)
+        elif args.command == "lookup":
+            run_lookup(args)
+        elif args.command == "skill":
+            skill_mod.run_skill(args)
+    except KeyboardInterrupt:
+        print("[ref-checker] Interrupted.", file=sys.stderr)
+        sys.exit(130)
