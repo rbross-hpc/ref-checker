@@ -1,0 +1,1131 @@
+[
+  {
+    "index": 1,
+    "raw": "Adamson, R., Osborne, T., Lester, C., and Palumbo, R. (2023). STREAM: A Scalable Federated HPC Telemetry Platform. Tech. rep., Oak Ridge National Laboratory (ORNL), Oak Ridge, TN (United States)",
+    "title": "STREAM: A Scalable Federated HPC Telemetry Platform",
+    "authors": [
+      "R. Adamson",
+      "T. Osborne",
+      "C. Lester",
+      "R. Palumbo"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Oak Ridge National Laboratory (ORNL)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 2,
+    "raw": "Adhianto, L., Banerjee, S., Fagan, M., Krentel, M., Marin, G., Mellor-Crummey, J., et al. (2010). HPCToolkit: Tools for performance analysis of optimized parallel programs. Concurrency and Computation: Practice and Experience 22, 685–701",
+    "title": "HPCToolkit: Tools for performance analysis of optimized parallel programs",
+    "authors": [
+      "L. Adhianto",
+      "S. Banerjee",
+      "M. Fagan",
+      "M. Krentel",
+      "G. Marin",
+      "J. Mellor-Crummey"
+    ],
+    "year": 2010,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Concurrency and Computation: Practice and Experience",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 3,
+    "raw": "Al-Najjar, A., Rao, N. S., Sankaran, R., Ziatdinov, M., Mukherjee, D., Ovchinnikova, O., et al. (2022). Enabling autonomous electron microscopy for networked computation and steering. In IEEE 18th International Conference on e-Science (e-Science) (IEEE), 267–277",
+    "title": "Enabling autonomous electron microscopy for networked computation and steering",
+    "authors": [
+      "A. Al-Najjar",
+      "N. S. Rao",
+      "R. Sankaran",
+      "M. Ziatdinov",
+      "D. Mukherjee",
+      "O. Ovchinnikova"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IEEE 18th International Conference on e-Science",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 4,
+    "raw": "Andström, V. (2024). A comparative analysis of Apache Kafka and Apache Pulsar. Ph.D. thesis, Master’s thesis, University of Helsinki, Faculty of Science",
+    "title": "A comparative analysis of Apache Kafka and Apache Pulsar",
+    "authors": [
+      "V. Andström"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "University of Helsinki, Faculty of Science",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 5,
+    "raw": "Balakrishnan, M., Malkhi, D., Davis, J. D., Prabhakaran, V., Wei, M., and Wobber, T. (2013). CORFU: A distributed shared log. ACM Trans. Comput. Syst. 31. doi:10.1145/2535930",
+    "title": "CORFU: A distributed shared log",
+    "authors": [
+      "M. Balakrishnan",
+      "D. Malkhi",
+      "J. D. Davis",
+      "V. Prabhakaran",
+      "M. Wei",
+      "T. Wobber"
+    ],
+    "year": 2013,
+    "doi": "10.1145/2535930",
+    "arxiv_id": null,
+    "venue": "ACM Transactions on Computer Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 6,
+    "raw": "Batenburg, K. J., Bals, S., Sijbers, J., Kübel, C., Midgley, P. A., Hernandez, J., et al. (2009). 3D imaging of nanomaterials by discrete tomography. Ultramicroscopy 109, 730–740",
+    "title": "3D imaging of nanomaterials by discrete tomography",
+    "authors": [
+      "K. J. Batenburg",
+      "S. Bals",
+      "J. Sijbers",
+      "C. Kübel",
+      "P. A. Midgley",
+      "J. Hernandez"
+    ],
+    "year": 2009,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Ultramicroscopy",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 7,
+    "raw": "Bautista-Gomez, L., Tsuboi, S., Komatitsch, D., Cappello, F., Maruyama, N., and Matsuoka, S. (2011). FTI: High performance fault tolerance interface for hybrid systems. In Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis (New York, NY, USA: Association for Computing Machinery), SC ’11. doi:10.1145/2063384.2063427",
+    "title": "FTI: High performance fault tolerance interface for hybrid systems",
+    "authors": [
+      "L. Bautista-Gomez",
+      "S. Tsuboi",
+      "D. Komatitsch",
+      "F. Cappello",
+      "N. Maruyama",
+      "S. Matsuoka"
+    ],
+    "year": 2011,
+    "doi": "10.1145/2063384.2063427",
+    "arxiv_id": null,
+    "venue": "Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 8,
+    "raw": "[Dataset] Bicer, T. (2024). Streaming tomography mini-app. https://github.com/diaspora-project/aps-mini-apps",
+    "title": "Streaming tomography mini-app",
+    "authors": [
+      "T. Bicer"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": "https://github.com/diaspora-project/aps-mini-apps",
+    "url": "https://github.com/diaspora-project/aps-mini-apps"
+  },
+  {
+    "index": 9,
+    "raw": "Bicer, T., Gürsoy, D., Andrade, V. D., Kettimuthu, R., Scullin, W., Carlo, F. D., et al. (2017). Trace: A high-throughput tomographic reconstruction engine for large-scale datasets. Advanced Structural and Chemical Imaging 3, 1–10",
+    "title": "Trace: A high-throughput tomographic reconstruction engine for large-scale datasets",
+    "authors": [
+      "T. Bicer",
+      "D. Gürsoy",
+      "V. D. Andrade",
+      "R. Kettimuthu",
+      "W. Scullin",
+      "F. D. Carlo"
+    ],
+    "year": 2017,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Advanced Structural and Chemical Imaging",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 10,
+    "raw": "Bicer, T., Gursoy, D., Kettimuthu, R., Foster, I. T., Ren, B., De Andrede, V., et al. (2017). Real-time data analysis and autonomous steering of synchrotron light source experiments. In 13th International Conference on e-Science (IEEE), 59–68",
+    "title": "Real-time data analysis and autonomous steering of synchrotron light source experiments",
+    "authors": [
+      "T. Bicer",
+      "D. Gursoy",
+      "R. Kettimuthu",
+      "I. T. Foster",
+      "B. Ren",
+      "V. De Andrede"
+    ],
+    "year": 2017,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "13th International Conference on e-Science",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 11,
+    "raw": "Bicer, T., Nikitin, V., Aslan, S., Gürsoy, D., Kettimuthu, R., and Foster, I. T. (2020). Tomographic reconstruction of dynamic features with streaming sliding subsets. In IEEE/ACM 2nd Annual Workshop on Extreme-scale Experiment-in-the-Loop Computing (XLOOP) (IEEE), 8–15",
+    "title": "Tomographic reconstruction of dynamic features with streaming sliding subsets",
+    "authors": [
+      "T. Bicer",
+      "V. Nikitin",
+      "S. Aslan",
+      "D. Gürsoy",
+      "R. Kettimuthu",
+      "I. T. Foster"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IEEE/ACM 2nd Annual Workshop on Extreme-scale Experiment-in-the-Loop Computing (XLOOP)",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 12,
+    "raw": "Brim, M. J., Moody, A. T., Lim, S.-H., Miller, R., Boehm, S., Stanavige, C., et al. (2023). UnifyFS: A user-level shared file system for unified access to distributed local storage. In International Parallel and Distributed Processing Symposium (IEEE), 290–300",
+    "title": "UnifyFS: A user-level shared file system for unified access to distributed local storage",
+    "authors": [
+      "M. J. Brim",
+      "A. T. Moody",
+      "S.-H. Lim",
+      "R. Miller",
+      "S. Boehm",
+      "C. Stanavige"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Parallel and Distributed Processing Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 13,
+    "raw": "Cernuda, J., Ye, J., Kougkas, A., and Sun, X.-H. (2024). HStream: A hierarchical data streaming engine for high-throughput scientific applications. In 53rd International Conference on Parallel Processing. 231–240",
+    "title": "HStream: A hierarchical data streaming engine for high-throughput scientific applications",
+    "authors": [
+      "J. Cernuda",
+      "J. Ye",
+      "A. Kougkas",
+      "X.-H. Sun"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "53rd International Conference on Parallel Processing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 14,
+    "raw": "Chantzialexiou, G., Luckow, A., and Jha, S. (2018). Pilot-streaming: A stream processing framework for high-performance computing. In 14th International Conference on e-Science (IEEE), 177–188",
+    "title": "Pilot-streaming: A stream processing framework for high-performance computing",
+    "authors": [
+      "G. Chantzialexiou",
+      "A. Luckow",
+      "S. Jha"
+    ],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "14th International Conference on e-Science",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 15,
+    "raw": "Chard, K., Tuecke, S., and Foster, I. (2016). Globus: Recent enhancements and future plans. In XSEDE16. 1–8",
+    "title": "Globus: Recent enhancements and future plans",
+    "authors": [
+      "K. Chard",
+      "S. Tuecke",
+      "I. Foster"
+    ],
+    "year": 2016,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "XSEDE16",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 16,
+    "raw": "Chard, R., Pruyne, J., McKee, K., Bryan, J., Raumann, B., Ananthakrishnan, R., et al. (2023). Globus automation services: Research process automation across the space–time continuum. Future Generation Computer Systems 142, 393–409",
+    "title": "Globus automation services: Research process automation across the space–time continuum",
+    "authors": [
+      "R. Chard",
+      "J. Pruyne",
+      "K. McKee",
+      "J. Bryan",
+      "B. Raumann",
+      "R. Ananthakrishnan"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Future Generation Computer Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 17,
+    "raw": "Childs, H., Ahern, S. D., Ahrens, J., Bauer, A. C., Bennett, J., Bethel, E. W., et al. (2020). A terminology for in situ visualization and analysis systems. The International Journal of High Performance Computing Applications 34, 676–691",
+    "title": "A terminology for in situ visualization and analysis systems",
+    "authors": [
+      "H. Childs",
+      "S. D. Ahern",
+      "J. Ahrens",
+      "A. C. Bauer",
+      "J. Bennett",
+      "E. W. Bethel"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "The International Journal of High Performance Computing Applications",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 18,
+    "raw": "Chung, J., Zacherek, W., Wisniewski, A., Liu, Z., Bicer, T., Kettimuthu, R., et al. (2022). SciStream: Architecture and toolkit for data streaming between federated science instruments. In 31st International Symposium on High-Performance Parallel and Distributed Computing. 185–198",
+    "title": "SciStream: Architecture and toolkit for data streaming between federated science instruments",
+    "authors": [
+      "J. Chung",
+      "W. Zacherek",
+      "A. Wisniewski",
+      "Z. Liu",
+      "T. Bicer",
+      "R. Kettimuthu"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "31st International Symposium on High-Performance Parallel and Distributed Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 19,
+    "raw": "Corbett, P., Feitelson, D., Fineberg, S., Hsu, Y., Nitzberg, B., Prost, J.-P., et al. (1996). Overview of the MPI-IO parallel I/O interface. Input/Output in Parallel and Distributed Computer Systems, 127–146",
+    "title": "Overview of the MPI-IO parallel I/O interface",
+    "authors": [
+      "P. Corbett",
+      "D. Feitelson",
+      "S. Fineberg",
+      "Y. Hsu",
+      "B. Nitzberg",
+      "J.-P. Prost"
+    ],
+    "year": 1996,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Input/Output in Parallel and Distributed Computer Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 20,
+    "raw": "Docan, C., Parashar, M., and Klasky, S. (2010). DataSpaces: An interaction and coordination framework for coupled simulation workflows. In 19th ACM International Symposium on High Performance Distributed Computing. 25–36",
+    "title": "DataSpaces: An interaction and coordination framework for coupled simulation workflows",
+    "authors": [
+      "C. Docan",
+      "M. Parashar",
+      "S. Klasky"
+    ],
+    "year": 2010,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "19th ACM International Symposium on High Performance Distributed Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 21,
+    "raw": "Donovan, S., Huizenga, G., Hutton, A. J., Ross, C. C., Petersen, M. K., and Schwan, P. (2003). Lustre: Building a file system for 1000-node clusters. In Proceedings of the 2003 Linux Symposium. vol. 2003, 380–386",
+    "title": "Lustre: Building a file system for 1000-node clusters",
+    "authors": [
+      "S. Donovan",
+      "G. Huizenga",
+      "A. J. Hutton",
+      "C. C. Ross",
+      "M. K. Petersen",
+      "P. Schwan"
+    ],
+    "year": 2003,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the 2003 Linux Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 22,
+    "raw": "Dorier, M., Wang, Z., Ayachit, U., Snyder, S., Ross, R., and Parashar, M. (2022). Colza: Enabling elastic in situ visualization for high-performance computing simulations. In International Parallel and Distributed Processing Symposium (IEEE), 538–548",
+    "title": "Colza: Enabling elastic in situ visualization for high-performance computing simulations",
+    "authors": [
+      "M. Dorier",
+      "Z. Wang",
+      "U. Ayachit",
+      "S. Snyder",
+      "R. Ross",
+      "M. Parashar"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Parallel and Distributed Processing Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 23,
+    "raw": "Eisenhauer, G., Podhorszki, N., Gainaru, A., Klasky, S., Davis, P. E., Parashar, M., et al. (2024). Streaming data in HPC workflows using ADIOS. arXiv preprint arXiv:2410.00178",
+    "title": "Streaming data in HPC workflows using ADIOS",
+    "authors": [
+      "G. Eisenhauer",
+      "N. Podhorszki",
+      "A. Gainaru",
+      "S. Klasky",
+      "P. E. Davis",
+      "M. Parashar"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": "2410.00178",
+    "venue": "arXiv preprint",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 24,
+    "raw": "Folk, M., Heber, G., Koziol, Q., Pourmal, E., and Robinson, D. (2011). An overview of the HDF5 technology suite and its applications. In AD ’11: Proceedings of the EDBT/ICDT 2011 Workshop on Array Databases (Uppsala, Sweden), 36–47",
+    "title": "An overview of the HDF5 technology suite and its applications",
+    "authors": [
+      "M. Folk",
+      "G. Heber",
+      "Q. Koziol",
+      "E. Pourmal",
+      "D. Robinson"
+    ],
+    "year": 2011,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "EDBT/ICDT 2011 Workshop on Array Databases",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 25,
+    "raw": "Folk, M., Heber, G., Koziol, Q., Pourmal, E., and Robinson, D. (2011). An overview of the HDF5 technology suite and its applications. In EDBT/ICDT Workshop on Array Databases. 36–47",
+    "title": "An overview of the HDF5 technology suite and its applications",
+    "authors": [
+      "M. Folk",
+      "G. Heber",
+      "Q. Koziol",
+      "E. Pourmal",
+      "D. Robinson"
+    ],
+    "year": 2011,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "EDBT/ICDT Workshop on Array Databases",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 26,
+    "raw": "Godoy, W. F., Podhorszki, N., Wang, R., Atkins, C., Eisenhauer, G., Gu, J., et al. (2020). ADIOS 2: The adaptable input output system. A framework for high-performance data management. SoftwareX 12, 100561",
+    "title": "ADIOS 2: The adaptable input output system. A framework for high-performance data management",
+    "authors": [
+      "W. F. Godoy",
+      "N. Podhorszki",
+      "R. Wang",
+      "C. Atkins",
+      "G. Eisenhauer",
+      "J. Gu"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SoftwareX",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 27,
+    "raw": "Hennecke, M. (2020). Daos: A scale-out high performance storage stack for storage class memory. Supercomputing Frontiers",
+    "title": "Daos: A scale-out high performance storage stack for storage class memory",
+    "authors": [
+      "M. Hennecke"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Supercomputing Frontiers",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 28,
+    "raw": "Javed, M. H., Lu, X., and Panda, D. K. (2017). Characterization of big data stream processing pipeline: A case study using Flink and Kafka. In 4th IEEE/ACM International Conference on Big Data Computing, Applications and Technologies. 1–10",
+    "title": "Characterization of big data stream processing pipeline: A case study using Flink and Kafka",
+    "authors": [
+      "M. H. Javed",
+      "X. Lu",
+      "D. K. Panda"
+    ],
+    "year": 2017,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "4th IEEE/ACM International Conference on Big Data Computing, Applications and Technologies",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 29,
+    "raw": "Kelly, C., Ha, S., Huck, K., Van Dam, H., Pouchard, L., Matyasfalvi, G., et al. (2020). Chimbuko: A workflow-level scalable performance trace analysis tool. In ISAV’20 In Situ Infrastructures for Enabling Extreme-Scale Analysis and Visualization (ACM). 15–19",
+    "title": "Chimbuko: A workflow-level scalable performance trace analysis tool",
+    "authors": [
+      "C. Kelly",
+      "S. Ha",
+      "K. Huck",
+      "H. Van Dam",
+      "L. Pouchard",
+      "G. Matyasfalvi"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ISAV’20 In Situ Infrastructures for Enabling Extreme-Scale Analysis and Visualization",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 30,
+    "raw": "Kougkas, A., Devarajan, H., Bateman, K., Cernuda, J., Rajesh, N., and Sun, X.-H. (2020). Chronolog: a distributed shared tiered log store with time-based data ordering. In 36th International Conference on Massive Storage Systems and Technology. 80",
+    "title": "Chronolog: a distributed shared tiered log store with time-based data ordering",
+    "authors": [
+      "A. Kougkas",
+      "H. Devarajan",
+      "K. Bateman",
+      "J. Cernuda",
+      "N. Rajesh",
+      "X.-H. Sun"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "36th International Conference on Massive Storage Systems and Technology",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 31,
+    "raw": "Li, J., Liao, W.-k., Choudhary, A., Ross, R., Thakur, R., Gropp, W., et al. (2003). Parallel netCDF: A high-performance scientific I/O interface. In ACM/IEEE Conference on Supercomputing. 39",
+    "title": "Parallel netCDF: A high-performance scientific I/O interface",
+    "authors": [
+      "J. Li",
+      "W.-k. Liao",
+      "A. Choudhary",
+      "R. Ross",
+      "R. Thakur",
+      "W. Gropp"
+    ],
+    "year": 2003,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ACM/IEEE Conference on Supercomputing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 32,
+    "raw": "Liu, Z., Bicer, T., Kettimuthu, R., and Foster, I. (2019). Deep learning accelerated light source experiments. In 3rd Workshop on Deep Learning on Supercomputers (IEEE), 20–28",
+    "title": "Deep learning accelerated light source experiments",
+    "authors": [
+      "Z. Liu",
+      "T. Bicer",
+      "R. Kettimuthu",
+      "I. Foster"
+    ],
+    "year": 2019,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "3rd Workshop on Deep Learning on Supercomputers",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 33,
+    "raw": "Liu, Z., Bicer, T., Kettimuthu, R., Gursoy, D., De Carlo, F., and Foster, I. (2020). TomoGAN: low-dose synchrotron x-ray tomography with generative adversarial networks. Journal of the Optical Society of America A 37, 422–434",
+    "title": "TomoGAN: low-dose synchrotron x-ray tomography with generative adversarial networks",
+    "authors": [
+      "Z. Liu",
+      "T. Bicer",
+      "R. Kettimuthu",
+      "D. Gursoy",
+      "F. De Carlo",
+      "I. Foster"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Journal of the Optical Society of America A",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 34,
+    "raw": "Lockwood, G. K., Hazen, D., Koziol, Q., Canon, R. S., Antypas, K., Balewski, J., et al. (2017). Storage 2020: A vision for the future of HPC storage",
+    "title": "Storage 2020: A vision for the future of HPC storage",
+    "authors": [
+      "G. K. Lockwood",
+      "D. Hazen",
+      "Q. Koziol",
+      "R. S. Canon",
+      "K. Antypas",
+      "J. Balewski"
+    ],
+    "year": 2017,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 35,
+    "raw": "Lu, X., Shankar, D., Gugnani, S., and Panda, D. K. (2016). High-performance design of Apache Spark with RDMA and its benefits on various workloads. In IEEE International Conference on Big Data (IEEE), 253–262",
+    "title": "High-performance design of Apache Spark with RDMA and its benefits on various workloads",
+    "authors": [
+      "X. Lu",
+      "D. Shankar",
+      "S. Gugnani",
+      "D. K. Panda"
+    ],
+    "year": 2016,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IEEE International Conference on Big Data",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 36,
+    "raw": "Marcu, O.-C., Costan, A., Antoniu, G., Pérez-Hernández, M., Nicolae, B., Tudoran, R., et al. (2018). Kera: Scalable data ingestion for stream processing. In 38th International Conference on Distributed Computing Systems (IEEE), 1480–1485",
+    "title": "Kera: Scalable data ingestion for stream processing",
+    "authors": [
+      "O.-C. Marcu",
+      "A. Costan",
+      "G. Antoniu",
+      "M. Pérez-Hernández",
+      "B. Nicolae",
+      "R. Tudoran"
+    ],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "38th International Conference on Distributed Computing Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 37,
+    "raw": "Matri, P., Carns, P., Ross, R., Costan, A., Pérez, M. S., and Antoniu, G. (2018). SLoG: Large-scale logging middleware for HPC and big data convergence. In 38th International Conference on Distributed Computing Systems (IEEE), 1507–1512",
+    "title": "SLoG: Large-scale logging middleware for HPC and big data convergence",
+    "authors": [
+      "P. Matri",
+      "P. Carns",
+      "R. Ross",
+      "A. Costan",
+      "M. S. Pérez",
+      "G. Antoniu"
+    ],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "38th International Conference on Distributed Computing Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 38,
+    "raw": "Matri, P. and Ross, R. (2021). Neon: Low-latency streaming pipelines for HPC. In 14th International Conference on Cloud Computing (IEEE), 698–707",
+    "title": "Neon: Low-latency streaming pipelines for HPC",
+    "authors": [
+      "P. Matri",
+      "R. Ross"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "14th International Conference on Cloud Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 39,
+    "raw": "Maurya, A., Rafique, M., Tonellot, T., AlSalem, H., Cappello, F., and Nicolae, B. (2023). GPU-enabled asynchronous multi-level checkpoint caching and prefetching. In HPDC’23: The 32nd International Symposium on High-Performance Parallel and Distributed Computing (Orlando, FL, USA), 73–85",
+    "title": "GPU-enabled asynchronous multi-level checkpoint caching and prefetching",
+    "authors": [
+      "A. Maurya",
+      "M. Rafique",
+      "T. Tonellot",
+      "H. AlSalem",
+      "F. Cappello",
+      "B. Nicolae"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "HPDC’23: The 32nd International Symposium on High-Performance Parallel and Distributed Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 40,
+    "raw": "Nicolae, B. (2020). DataStates: towards lightweight data models for deep learning. In SMC’20: The 2020 Smoky Mountains Computational Sciences and Engineering Conference (Nashville, United States), 117–129",
+    "title": "DataStates: towards lightweight data models for deep learning",
+    "authors": [
+      "B. Nicolae"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SMC’20: The 2020 Smoky Mountains Computational Sciences and Engineering Conference",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 41,
+    "raw": "Nicolae, B. (2022). Scalable multi-versioning ordered key-value stores with persistent memory support. In IPDPS 2022: The 36th IEEE International Parallel and Distributed Processing Symposium (Lyon, France), 93–103",
+    "title": "Scalable multi-versioning ordered key-value stores with persistent memory support",
+    "authors": [
+      "B. Nicolae"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IPDPS 2022: The 36th IEEE International Parallel and Distributed Processing Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 42,
+    "raw": "Nicolae, B., Moody, A., Gonsiorowski, E., Mohror, K., and Cappello, F. (2019). VeloC: Towards high performance adaptive asynchronous checkpointing at large scale. In IPDPS’19: The 2019 IEEE International Parallel and Distributed Processing Symposium (Rio de Janeiro, Brazil), 911–920",
+    "title": "VeloC: Towards high performance adaptive asynchronous checkpointing at large scale",
+    "authors": [
+      "B. Nicolae",
+      "A. Moody",
+      "E. Gonsiorowski",
+      "K. Mohror",
+      "F. Cappello"
+    ],
+    "year": 2019,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IPDPS’19: The 2019 IEEE International Parallel and Distributed Processing Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 43,
+    "raw": "Nicolae, B., Moody, A., Kosinovsky, G., Mohror, K., and Cappello, F. (2021). VeloC: very low overhead checkpointing in the age of exascale. In SuperCheck’21: The First International Symposium on Checkpointing for Supercomputing (Virtual Event)",
+    "title": "VeloC: very low overhead checkpointing in the age of exascale",
+    "authors": [
+      "B. Nicolae",
+      "A. Moody",
+      "G. Kosinovsky",
+      "K. Mohror",
+      "F. Cappello"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SuperCheck’21: The First International Symposium on Checkpointing for Supercomputing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 44,
+    "raw": "Ousterhout, J., Gopalan, A., Gupta, A., Kejriwal, A., Lee, C., Montazeri, B., et al. (2015). The RAMCloud storage system. ACM Transactions on Computer Systems 33, 1–55",
+    "title": "The RAMCloud storage system",
+    "authors": [
+      "J. Ousterhout",
+      "A. Gopalan",
+      "A. Gupta",
+      "A. Kejriwal",
+      "C. Lee",
+      "B. Montazeri"
+    ],
+    "year": 2015,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ACM Transactions on Computer Systems",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 45,
+    "raw": "Pan, H., Chard, R., Zhou, S., Kamatar, A., Vescovi, R., Hayot-Sasson, V., et al. (2024). Octopus: Experiences with a hybrid event-driven architecture for distributed scientific computing. In SC24-W: Workshops of the International Conference for High Performance Computing, Networking, Storage and Analysis (IEEE), 496–507",
+    "title": "Octopus: Experiences with a hybrid event-driven architecture for distributed scientific computing",
+    "authors": [
+      "H. Pan",
+      "R. Chard",
+      "S. Zhou",
+      "A. Kamatar",
+      "R. Vescovi",
+      "V. Hayot-Sasson"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SC24-W: Workshops of the International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 46,
+    "raw": "Peterka, T., Morozov, D., Nigmetov, A., Yildiz, O., Nicolae, B., and Davis, P. E. (2023). LowFive: In situ data transport for high-performance workflows. In IPDPS’23: The 37th IEEE International Parallel and Distributed Processing Symposium (St. Petersburg, FL, USA), 985–995",
+    "title": "LowFive: In situ data transport for high-performance workflows",
+    "authors": [
+      "T. Peterka",
+      "D. Morozov",
+      "A. Nigmetov",
+      "O. Yildiz",
+      "B. Nicolae",
+      "P. E. Davis"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "IPDPS’23: The 37th IEEE International Parallel and Distributed Processing Symposium",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 47,
+    "raw": "Ramesh, S., Childs, H., and Malony, A. (2022). Serviz: A shared in situ visualization service. In SC22: International Conference for High Performance Computing, Networking, Storage and Analysis (IEEE), 1–14",
+    "title": "Serviz: A shared in situ visualization service",
+    "authors": [
+      "S. Ramesh",
+      "H. Childs",
+      "A. Malony"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "SC22: International Conference for High Performance Computing, Networking, Storage and Analysis",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 48,
+    "raw": "[Dataset] Redpanda-Data (????). Redpanda. https://www.redpanda.com/",
+    "title": "Redpanda",
+    "authors": [],
+    "year": null,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": null,
+    "url": "https://www.redpanda.com/"
+  },
+  {
+    "index": 49,
+    "raw": "Ross, R. B., Amvrosiadis, G., Carns, P., Cranor, C. D., Dorier, M., Harms, K., et al. (2020). Mochi: Composing data services for high-performance computing environments. Journal of Computer Science and Technology 35, 121–144",
+    "title": "Mochi: Composing data services for high-performance computing environments",
+    "authors": [
+      "R. B. Ross",
+      "G. Amvrosiadis",
+      "P. Carns",
+      "C. D. Cranor",
+      "M. Dorier",
+      "K. Harms"
+    ],
+    "year": 2020,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Journal of Computer Science and Technology",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 50,
+    "raw": "Ryu, M., Kim, Y., Kim, K., and Madduri, R. K. (2022). APPFL: Open-source software framework for privacy-preserving federated learning. In International Parallel and Distributed Processing Symposium Workshops (IEEE), 1074–1083",
+    "title": "APPFL: Open-source software framework for privacy-preserving federated learning",
+    "authors": [
+      "M. Ryu",
+      "Y. Kim",
+      "K. Kim",
+      "R. K. Madduri"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Parallel and Distributed Processing Symposium Workshops",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 51,
+    "raw": "Schmuck, F. and Haskin, R. (2002). GPFS: A shared-disk file system for large computing clusters. In Conference on File and Storage Technologies",
+    "title": "GPFS: A shared-disk file system for large computing clusters",
+    "authors": [
+      "F. Schmuck",
+      "R. Haskin"
+    ],
+    "year": 2002,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Conference on File and Storage Technologies",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 52,
+    "raw": "Sharma, R. and Atyab, M. (2021). Introduction to Apache Pulsar. In Cloud-Native Microservices with Apache Pulsar: Build Distributed Messaging Microservices (Springer). 1–22",
+    "title": "Introduction to Apache Pulsar",
+    "authors": [
+      "R. Sharma",
+      "M. Atyab"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Cloud-Native Microservices with Apache Pulsar: Build Distributed Messaging Microservices",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 53,
+    "raw": "Souza, R., Skluzacek, T. J., Wilkinson, S. R., Ziatdinov, M., and da Silva, R. F. (2023). Towards lightweight data integration using multi-workflow provenance and data observability. In IEEE International Conference on e-Science. doi:10.1109/e-Science58273.2023.10254822",
+    "title": "Towards lightweight data integration using multi-workflow provenance and data observability",
+    "authors": [
+      "R. Souza",
+      "T. J. Skluzacek",
+      "S. R. Wilkinson",
+      "M. Ziatdinov",
+      "R. F. da Silva"
+    ],
+    "year": 2023,
+    "doi": "10.1109/e-Science58273.2023.10254822",
+    "arxiv_id": null,
+    "venue": "IEEE International Conference on e-Science",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 54,
+    "raw": "Stopford, B. (2018). Designing Event-driven Systems (O’Reilly Media, Incorporated)",
+    "title": "Designing Event-driven Systems",
+    "authors": [
+      "B. Stopford"
+    ],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "O’Reilly Media, Incorporated",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 55,
+    "raw": "Taranov, K., Byan, S., Marathe, V., and Hoefler, T. (2022). Kafkadirect: Zero-copy data access for Apache Kafka over RDMA networks. In International Conference on Management of Data. 2191–2204",
+    "title": "Kafkadirect: Zero-copy data access for Apache Kafka over RDMA networks",
+    "authors": [
+      "K. Taranov",
+      "S. Byan",
+      "V. Marathe",
+      "T. Hoefler"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Conference on Management of Data",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 56,
+    "raw": "Tatebe, O., Obata, K., Hiraga, K., and Ohtsuji, H. (2022). CHFS: Parallel consistent hashing file system for node-local persistent memory. In International Conference on High Performance Computing in Asia-Pacific Region. 115–124",
+    "title": "CHFS: Parallel consistent hashing file system for node-local persistent memory",
+    "authors": [
+      "O. Tatebe",
+      "K. Obata",
+      "K. Hiraga",
+      "H. Ohtsuji"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Conference on High Performance Computing in Asia-Pacific Region",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 57,
+    "raw": "Vef, M.-A., Moti, N., Süß, T., Tocci, T., Nou, R., Miranda, A., et al. (2018). GekkoFS-A temporary distributed file system for HPC applications. In International Conference on Cluster Computing (IEEE), 319–324",
+    "title": "GekkoFS-A temporary distributed file system for HPC applications",
+    "authors": [
+      "M.-A. Vef",
+      "N. Moti",
+      "T. Süß",
+      "T. Tocci",
+      "R. Nou",
+      "A. Miranda"
+    ],
+    "year": 2018,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "International Conference on Cluster Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 58,
+    "raw": "Wang, C., Mohror, K., and Snir, M. (2021). File system semantics requirements of HPC applications. In 30th International Symposium on High-Performance Parallel and Distributed Computing. 19–30",
+    "title": "File system semantics requirements of HPC applications",
+    "authors": [
+      "C. Wang",
+      "K. Mohror",
+      "M. Snir"
+    ],
+    "year": 2021,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "30th International Symposium on High-Performance Parallel and Distributed Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 59,
+    "raw": "Wang, G., Koshy, J., Subramanian, S., Paramasivam, K., Zadeh, M., Narkhede, N., et al. (2015). Building a replicated logging system with Apache Kafka. Proceedings of the VLDB Endowment 8, 1654–1655",
+    "title": "Building a replicated logging system with Apache Kafka",
+    "authors": [
+      "G. Wang",
+      "J. Koshy",
+      "S. Subramanian",
+      "K. Paramasivam",
+      "M. Zadeh",
+      "N. Narkhede"
+    ],
+    "year": 2015,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "Proceedings of the VLDB Endowment",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 60,
+    "raw": "Ward, L., Pauloski, J. G., Hayot-Sasson, V., Babuji, Y., Brace, A., Chard, R., et al. (0). Employing artificial intelligence to steer exascale workflows with Colmena. The International Journal of High Performance Computing Applications 0, 10943420241288242. doi:10.1177/10943420241288242",
+    "title": "Employing artificial intelligence to steer exascale workflows with Colmena",
+    "authors": [
+      "L. Ward",
+      "J. G. Pauloski",
+      "V. Hayot-Sasson",
+      "Y. Babuji",
+      "A. Brace",
+      "R. Chard"
+    ],
+    "year": null,
+    "doi": "10.1177/10943420241288242",
+    "arxiv_id": null,
+    "venue": "The International Journal of High Performance Computing Applications",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 61,
+    "raw": "Ward, L., Sivaraman, G., Pauloski, J., Babuji, Y., Chard, R., Dandu, N., et al. (2021). Colmena: Scalable machine-learning-based steering of ensemble simulations for high performance computing. In IEEE/ACM Workshop on Machine Learning in High Performance Computing Environments (Los Alamitos, CA, USA: IEEE Computer Society), 9–20. doi:10.1109/MLHPC54614.2021.00007",
+    "title": "Colmena: Scalable machine-learning-based steering of ensemble simulations for high performance computing",
+    "authors": [
+      "L. Ward",
+      "G. Sivaraman",
+      "J. Pauloski",
+      "Y. Babuji",
+      "R. Chard",
+      "N. Dandu"
+    ],
+    "year": 2021,
+    "doi": "10.1109/MLHPC54614.2021.00007",
+    "arxiv_id": null,
+    "venue": "IEEE/ACM Workshop on Machine Learning in High Performance Computing Environments",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 62,
+    "raw": "[Dataset] Yan, X., Hudson, N., Park, H., Grzenda, D., Pauloski, J. G., Schwarting, M., et al. (2025). MOFA: Discovering materials for carbon capture with a genai- and simulation-based workflow",
+    "title": "MOFA: Discovering materials for carbon capture with a genai- and simulation-based workflow",
+    "authors": [
+      "X. Yan",
+      "N. Hudson",
+      "H. Park",
+      "D. Grzenda",
+      "J. G. Pauloski",
+      "M. Schwarting"
+    ],
+    "year": 2025,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 63,
+    "raw": "Ye, J., Cernuda, J., Rajesh, N., Bateman, K., Yildiz, O., Peterka, T., et al. (2024). Viper: A high-performance I/O framework for transparently updating, storing, and transferring deep neural network models. In ICPP’24: The 53nd International Conference on Parallel Processing (Gotland, Sweden)",
+    "title": "Viper: A high-performance I/O framework for transparently updating, storing, and transferring deep neural network models",
+    "authors": [
+      "J. Ye",
+      "J. Cernuda",
+      "N. Rajesh",
+      "K. Bateman",
+      "O. Yildiz",
+      "T. Peterka"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "ICPP’24: The 53nd International Conference on Parallel Processing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 64,
+    "raw": "Zheng, W., Kordas, J., Skluzacek, T. J., Kettimuthu, R., and Foster, I. (2024). Globus service enhancements for exascale applications and facilities. The International Journal of High Performance Computing Applications 38, 658–670",
+    "title": "Globus service enhancements for exascale applications and facilities",
+    "authors": [
+      "W. Zheng",
+      "J. Kordas",
+      "T. J. Skluzacek",
+      "R. Kettimuthu",
+      "I. Foster"
+    ],
+    "year": 2024,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": "The International Journal of High Performance Computing Applications",
+    "github_url": null,
+    "url": null
+  }
+]

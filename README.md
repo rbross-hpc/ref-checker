@@ -178,6 +178,26 @@ ref-checker extract paper.pdf
 ref-checker extract paper.pdf --out-dir ./refs
 ```
 
+### Re-emit results from a saved sidecar
+
+After a `check` run (interrupted or not), the sidecar contains everything
+needed to re-print the per-reference output without re-querying the network.
+
+```bash
+ref-checker show paper.results.json
+```
+
+`show` also accepts a bare `--refs-json` file (a list of reference objects);
+in that mode every reference is displayed with a `NOT YET PROCESSED`
+placeholder, useful for previewing what a run will consume before you start it.
+
+```bash
+ref-checker show paper.refs.json
+```
+
+The `check` command now prints a hint at the end of each run showing the
+exact `ref-checker show` invocation you can use to re-emit its output.
+
 ### Query a single source
 
 ```bash
@@ -386,6 +406,22 @@ that all expected field names appear in the assembled LLM prompt.
 The `SKILL.md` frontmatter (`name`, `description`) is required by the
 [OpenCode Agent Skills spec](https://opencode.ai/docs/skills/). Do not remove
 it.
+
+## Testing
+
+Run the offline test suite (no network, no LLM calls):
+
+```bash
+pytest tests/
+```
+
+Reference-JSON fixtures live under `tests/fixtures/refs/`. Five of them were
+extracted from redistributable OSTI-hosted papers (CC-BY 4.0 or U.S. Federal
+public domain) sourced from the sibling
+[pub-analysis](https://github.com/rbross-hpc/pub-analysis) repository; two
+are hand-crafted (`edge_cases.json`, `mixed_small.json`) covering explicit
+lookup-mode combinations. See [tests/fixtures/README.md](tests/fixtures/README.md)
+for per-fixture provenance and (rarely-needed) regeneration instructions.
 
 ## License
 

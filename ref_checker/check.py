@@ -1025,5 +1025,11 @@ def check_references(
         stats.print_summary()
         if reason == "keyboard_interrupt":
             print("[ref-checker] Interrupted — partial results saved.", file=sys.stderr)
+        if sidecar is not None:
+            print(
+                f"[ref-checker] Re-emit results anytime with: "
+                f"ref-checker show {sidecar}",
+                file=sys.stderr,
+            )
 
     return reason

@@ -1,0 +1,208 @@
+[
+  {
+    "index": 1,
+    "raw": "IEEE std 754-2019: IEEE standard for floating-point arithmetic (2019).https://doi.org/ 10.1109/IEEESTD.2019.8766229",
+    "title": "IEEE standard for floating-point arithmetic",
+    "authors": [],
+    "year": 2019,
+    "doi": "10.1109/IEEESTD.2019.8766229",
+    "arxiv_id": null,
+    "venue": "IEEE",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 2,
+    "raw": "Energy exascale earth system model (E3SM). Computer Software (Mar 2024).https://doi. org/10.11578/E3SM/dc.20240301.3",
+    "title": "Energy exascale earth system model (E3SM)",
+    "authors": [],
+    "year": 2024,
+    "doi": "10.11578/E3SM/dc.20240301.3",
+    "arxiv_id": null,
+    "venue": "Computer Software",
+    "github_url": null,
+    "url": "https://doi"
+  },
+  {
+    "index": 3,
+    "raw": "Baker, A.H., Pinard, A., Hammerling, D.M.: On a structural similarity index approach for floating-point data. IEEE Transactions on Visualization and Computer Graphics30(9), 6261–6274 (2024).https://doi.org/10.1109/TVCG.2023.3332843",
+    "title": "On a structural similarity index approach for floating-point data",
+    "authors": [
+      "A.H. Baker",
+      "A. Pinard",
+      "D.M. Hammerling"
+    ],
+    "year": 2024,
+    "doi": "10.1109/TVCG.2023.3332843",
+    "arxiv_id": null,
+    "venue": "IEEE Transactions on Visualization and Computer Graphics",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 4,
+    "raw": "Delaunay, X., Courtois, A., Gouillon, F.: Evaluation of lossless and lossy algorithms for the compression of scientific datasets in netCDF-4 or HDF5 files. Geoscientific Model Development 12(9), 4099–4113 (2019).https://doi.org/10.5194/gmd-12-4099-2019",
+    "title": "Evaluation of lossless and lossy algorithms for the compression of scientific datasets in netCDF-4 or HDF5 files",
+    "authors": [
+      "X. Delaunay",
+      "A. Courtois",
+      "F. Gouillon"
+    ],
+    "year": 2019,
+    "doi": "10.5194/gmd-12-4099-2019",
+    "arxiv_id": null,
+    "venue": "Geoscientific Model Development",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 5,
+    "raw": "Diffenderfer, J., Fox, A.L., Hittinger, J.A., Sanders, G., Lindstrom, P.G.: Error analysis of ZFP compression for floating-point data. SIAM Journal on Scientific Computing41(3), A1867–A1898 (2019).https://doi.org/10.1137/18M1168832",
+    "title": "Error analysis of ZFP compression for floating-point data",
+    "authors": [
+      "J. Diffenderfer",
+      "A.L. Fox",
+      "J.A. Hittinger",
+      "G. Sanders",
+      "P.G. Lindstrom"
+    ],
+    "year": 2019,
+    "doi": "10.1137/18M1168832",
+    "arxiv_id": null,
+    "venue": "SIAM Journal on Scientific Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 6,
+    "raw": "Fox, A., Lindstrom, P.: Enhancing ZFP: A statistical approach to understanding and reducing error bias in a lossy floating-point compression algorithm. SIAM Journal on Scientific Computing (2025).https://doi.org/10.1137/24M1679586, to appear. Available as arXiv:2407.01826.",
+    "title": "Enhancing ZFP: A statistical approach to understanding and reducing error bias in a lossy floating-point compression algorithm",
+    "authors": [
+      "A. Fox",
+      "P. Lindstrom"
+    ],
+    "year": 2025,
+    "doi": "10.1137/24M1679586",
+    "arxiv_id": "2407.01826",
+    "venue": "SIAM Journal on Scientific Computing",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 7,
+    "raw": "Gustafson, J., Bohlender, G., Chung, S.Y., Dimitrov, V., Jones, G., Leong, S.H., Lindstrom, P., Omtzigt, T., Rehr, H., Shewmaker, A., Yonemoto, I.: Standard for Posit™ arithmetic (2022), https://github.com/posit-standard/Posit-Standard-Community-Feedback",
+    "title": "Standard for Posit arithmetic",
+    "authors": [
+      "J. Gustafson",
+      "G. Bohlender",
+      "S.Y. Chung",
+      "V. Dimitrov",
+      "G. Jones",
+      "S.H. Leong",
+      "P. Lindstrom",
+      "T. Omtzigt",
+      "H. Rehr",
+      "A. Shewmaker",
+      "I. Yonemoto"
+    ],
+    "year": 2022,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": "https://github.com/posit-standard/Posit-Standard-Community-Feedback",
+    "url": "https://github.com/posit-standard/Posit-Standard-Community-Feedback"
+  },
+  {
+    "index": 8,
+    "raw": "Ibarria, L., Lindstrom, P., Rossignac, J.: Spectral interpolation on 3×3 stencils for prediction and compression. Journal of Computers2(8), 53–63 (2007).https://doi.org/10.4304/jcp. 2.8.53-63",
+    "title": "Spectral interpolation on 3×3 stencils for prediction and compression",
+    "authors": [
+      "L. Ibarria",
+      "P. Lindstrom",
+      "J. Rossignac"
+    ],
+    "year": 2007,
+    "doi": "10.4304/jcp.2.8.53-63",
+    "arxiv_id": null,
+    "venue": "Journal of Computers",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 9,
+    "raw": "Lindstrom, P.: Fixed-rate compressed floating-point arrays. IEEE Transactions on Visualization and Computer Graphics20(12), 2674–2683 (2014).https://doi.org/10.1109/TVCG. 2014.2346458",
+    "title": "Fixed-rate compressed floating-point arrays",
+    "authors": [
+      "P. Lindstrom"
+    ],
+    "year": 2014,
+    "doi": "10.1109/TVCG.2014.2346458",
+    "arxiv_id": null,
+    "venue": "IEEE Transactions on Visualization and Computer Graphics",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 10,
+    "raw": "Lindstrom, P., Asher, D.:zfpversion 1.0.1 (2023),https://github.com/LLNL/zfp",
+    "title": "zfp version 1.0.1",
+    "authors": [
+      "P. Lindstrom",
+      "D. Asher"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": "https://github.com/LLNL/zfp",
+    "url": "https://github.com/LLNL/zfp"
+  },
+  {
+    "index": 11,
+    "raw": "Lindstrom, P., Asher, D.:zfpversion 1.0.1: F AQ #20 (2023),https://zfp.readthedocs. io/en/release1.0.1/faq.html#q-relerr",
+    "title": "zfp version 1.0.1: FAQ #20",
+    "authors": [
+      "P. Lindstrom",
+      "D. Asher"
+    ],
+    "year": 2023,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": null,
+    "url": "https://zfp.readthedocs.io/en/release1.0.1/faq.html#q-relerr"
+  },
+  {
+    "index": 12,
+    "raw": "Lindstrom, P., Hittinger, J., Diffenderfer, J., Fox, A., Osei-Kuffuor, D., Banks, J.: ZFP: A compressed array representation for numerical computations. International Journal of High Performance Computing Applications39(1), 104–122 (2024).https://doi.org/10.1177/ 10943420241284023",
+    "title": "ZFP: A compressed array representation for numerical computations",
+    "authors": [
+      "P. Lindstrom",
+      "J. Hittinger",
+      "J. Diffenderfer",
+      "A. Fox",
+      "D. Osei-Kuffuor",
+      "J. Banks"
+    ],
+    "year": 2024,
+    "doi": "10.1177/10943420241284023",
+    "arxiv_id": null,
+    "venue": "International Journal of High Performance Computing Applications",
+    "github_url": null,
+    "url": null
+  },
+  {
+    "index": 13,
+    "raw": "Pourmal, E.: HDF5 compression demystified (2014),https://support.hdfgroup. org/releases/hdf5/documentation/rfc/RFC-Why%20does%20not%20compression% 20work-GH-EP.docx.pdf",
+    "title": "HDF5 compression demystified",
+    "authors": [
+      "E. Pourmal"
+    ],
+    "year": 2014,
+    "doi": null,
+    "arxiv_id": null,
+    "venue": null,
+    "github_url": null,
+    "url": "https://support.hdfgroup.org/releases/hdf5/documentation/rfc/RFC-Why%20does%20not%20compression%20work-GH-EP.docx.pdf"
+  }
+]
