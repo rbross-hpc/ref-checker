@@ -9,7 +9,7 @@ from pathlib import Path
 from .extract import Reference
 from .results import LookupResult
 
-SIDECAR_SCHEMA_VERSION = 1
+SIDECAR_SCHEMA_VERSION = 2
 
 
 def refs_hash(refs: list[Reference]) -> str:
@@ -45,6 +45,7 @@ def result_to_dict(result: LookupResult, min_match: float) -> dict:
         "dead_urls": [list(t) for t in result.dead_urls],
         "exhausted_sources": result.exhausted_sources,
         "url_liveness_check": result.url_liveness_check,
+        "per_source": result.per_source,
     }
 
 
@@ -64,11 +65,16 @@ def result_from_dict(d: dict) -> LookupResult:
         dead_urls=[tuple(t) for t in (d.get("dead_urls") or [])],
         exhausted_sources=d.get("exhausted_sources") or [],
         url_liveness_check=d.get("url_liveness_check", False),
+        per_source=d.get("per_source") or {},
     )
 
 
 def needs_retry(result_dict: dict, retry_closest: bool) -> bool:
-    """Return True if this result dict should be re-queried on resume."""
+    """Return True if this result should be revisited on resume.
+
+    Coarse-grained: says only whether the ref is "done" or worth re-planning.
+    Fine-grained per-source planning lives in check._plan_ref_work.
+    """
     status = result_dict.get("status", "NO MATCH")
     if status not in ("OK", "CLOSEST", "NO MATCH"):
         return True
@@ -84,7 +90,12 @@ def needs_retry(result_dict: dict, retry_closest: bool) -> bool:
 
 
 def load(path: Path, refs: list[Reference]) -> tuple[dict[int, dict], bool]:
-    """Load sidecar JSON. Returns (entries_by_index, hash_ok)."""
+    """Load sidecar JSON. Returns (entries_by_index, hash_ok).
+
+    A schema-version mismatch is treated as invalid — returns ({}, False)
+    so the driver starts fresh. This is intentional: cross-version upgrade
+    is not supported; users who care about the prior data can hand-migrate.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:

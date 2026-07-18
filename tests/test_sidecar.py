@@ -111,6 +111,24 @@ class TestResultRoundtrip:
         d = sidecar.result_to_dict(_no_match_result(), 0.80)
         assert d["status"] == "NO MATCH"
 
+    def test_per_source_roundtrip(self):
+        r = LookupResult()
+        r.per_source = {
+            "openalex": {"status": "hit_id", "queried_by": ["doi"],
+                         "score": 1.0, "summary": {"title": "X"}, "note": None},
+            "crossref": {"status": "not_found", "queried_by": ["doi", "title"],
+                         "score": None, "summary": None, "note": None},
+            "dblp":     {"status": "error", "queried_by": ["title"],
+                         "score": None, "summary": None,
+                         "note": "retries exhausted"},
+            "arxiv":    {"status": "disabled", "queried_by": [],
+                         "score": None, "summary": None,
+                         "note": "session circuit breaker"},
+        }
+        d = sidecar.result_to_dict(r, 0.80)
+        r2 = sidecar.result_from_dict(d)
+        assert r2.per_source == r.per_source
+
 
 class TestNeedsRetry:
     def test_ok_no_retry(self):
@@ -189,6 +207,18 @@ class TestWriteLoad:
     def test_wrong_schema_version_returns_empty(self, tmp_path):
         path = tmp_path / "old.json"
         path.write_text(json.dumps({"schema_version": 99, "refs_hash": "x", "references": {}}))
+        entries, hash_ok = sidecar.load(path, [_ref(1)])
+        assert entries == {}
+        assert hash_ok is False
+
+    def test_v1_sidecar_is_rejected(self, tmp_path):
+        """v1 sidecars must be treated as invalid (hard-reject, no upgrade)."""
+        path = tmp_path / "v1.json"
+        path.write_text(json.dumps({
+            "schema_version": 1,
+            "refs_hash": "x",
+            "references": {"1": {"ref": {}, "result": {"status": "OK"}}},
+        }))
         entries, hash_ok = sidecar.load(path, [_ref(1)])
         assert entries == {}
         assert hash_ok is False

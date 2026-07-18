@@ -4,6 +4,24 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 
+from .similarity import title_ratio
+
+_YEAR_MISMATCH_PENALTY = 0.10
+
+_LIVENESS_SOURCES = ("github", "url")
+_ID_MODES = ("doi", "arxiv_id", "url")
+
+# When multiple lookup modes are tried against the same source, keep the
+# most-informative status. Higher number wins.
+_STATUS_PRECEDENCE = {
+    "hit_id":    5,
+    "hit_title": 4,
+    "error":     3,
+    "not_found": 2,
+    "disabled":  1,
+    "skipped":   0,
+}
+
 
 @dataclass
 class LookupResult:
@@ -23,6 +41,155 @@ class LookupResult:
     dead_urls: list[tuple[str, str]] = field(default_factory=list)
     exhausted_sources: list[str] = field(default_factory=list)
     url_liveness_check: bool = False
+    per_source: dict[str, dict] = field(default_factory=dict)
+
+    def record_source(
+        self,
+        source: str,
+        status: str,
+        *,
+        queried_by: str | None = None,
+        score: float | None = None,
+        summary: dict | None = None,
+        note: str | None = None,
+    ) -> None:
+        """Merge a per-source outcome into per_source[source].
+
+        - queried_by is appended (deduped) to entry["queried_by"].
+        - score/summary are stored only if the new score is strictly better
+          than what's already there (or nothing is there yet).
+        - status is kept per _STATUS_PRECEDENCE (higher wins). This means
+          an error from one lookup mode is not masked by a later not_found
+          from a different mode against the same source.
+        - note overwrites when non-None.
+        """
+        entry = self.per_source.get(source)
+        if entry is None:
+            entry = {
+                "status": status,
+                "queried_by": [],
+                "score": None,
+                "summary": None,
+                "note": None,
+            }
+            self.per_source[source] = entry
+        else:
+            old_rank = _STATUS_PRECEDENCE.get(entry.get("status"), -1)
+            new_rank = _STATUS_PRECEDENCE.get(status, -1)
+            if new_rank > old_rank:
+                entry["status"] = status
+
+        if queried_by and queried_by not in entry["queried_by"]:
+            entry["queried_by"].append(queried_by)
+        if score is not None:
+            prior = entry.get("score")
+            if prior is None or score > prior:
+                entry["score"] = score
+                entry["summary"] = summary
+        elif summary is not None and entry.get("summary") is None:
+            entry["summary"] = summary
+        if note is not None:
+            entry["note"] = note
+
+    def recompute_best(self, ref, min_match: float) -> None:
+        """Re-derive best_summary / display_score / best_source and friends from per_source.
+
+        This is the single point of truth for turning per-source outcomes into
+        the flat "winning result" fields the formatter and status_label consume.
+        """
+        self.best_summary = None
+        self.best_source = None
+        self.display_score = None
+        self.id_confirmed = False
+        self.is_liveness = False
+        self.year_mismatch_note = None
+        self.id_notes = []
+        self.doi_found_in = []
+        self.arxiv_found_in = []
+        self.exhausted_sources = []
+        self.url_liveness_check = False
+
+        for src, entry in self.per_source.items():
+            status = entry.get("status")
+            if status == "error":
+                if src not in self.exhausted_sources:
+                    self.exhausted_sources.append(src)
+            if status == "hit_id":
+                qby = entry.get("queried_by") or []
+                if "doi" in qby and src not in self.doi_found_in:
+                    self.doi_found_in.append(src)
+                if "arxiv_id" in qby and src not in self.arxiv_found_in:
+                    self.arxiv_found_in.append(src)
+
+        id_hits = [
+            (src, entry) for src, entry in self.per_source.items()
+            if entry.get("status") == "hit_id" and entry.get("summary")
+        ]
+        if id_hits:
+            id_hits.sort(key=lambda kv: (kv[0] in _LIVENESS_SOURCES, kv[0]))
+            best_src, best_entry = id_hits[0]
+            summary = best_entry["summary"]
+            self.best_summary = summary
+            self.best_source = best_src
+            self.id_confirmed = True
+
+            if best_src in _LIVENESS_SOURCES:
+                self.is_liveness = True
+                self.display_score = None
+                if best_src == "url":
+                    self.url_liveness_check = True
+            else:
+                cand_title = summary.get("title") if summary else None
+                if ref.title and cand_title:
+                    t_sim = title_ratio(ref.title, cand_title)
+                    self.display_score = t_sim
+                    if t_sim < 0.85:
+                        self.id_notes.append(f'DOI title: "{cand_title}"')
+                else:
+                    self.display_score = None
+
+                ref_year = ref.year
+                cand_year = summary.get("year") if summary else None
+                if ref_year and cand_year and ref_year != cand_year:
+                    self.id_notes.append(
+                        f"year mismatch (ref year={ref_year}, match year={cand_year})"
+                    )
+                    self.year_mismatch_note = (
+                        f"ref year={ref_year}, match year={cand_year}"
+                    )
+            return
+
+        title_hits = [
+            (src, entry) for src, entry in self.per_source.items()
+            if entry.get("status") == "hit_title" and entry.get("summary") is not None
+        ]
+        best_score = -1.0
+        best_src = None
+        best_summary = None
+        best_year_note = None
+        for src, entry in title_hits:
+            summary = entry["summary"]
+            raw_score = entry.get("score")
+            if raw_score is None:
+                continue
+            score = raw_score
+            year_note = None
+            ref_year = ref.year
+            cand_year = summary.get("year")
+            if ref_year and cand_year and ref_year != cand_year:
+                score = max(0.0, score - _YEAR_MISMATCH_PENALTY)
+                year_note = f"ref year={ref_year}, match year={cand_year}"
+            if score > best_score:
+                best_score = score
+                best_src = src
+                best_summary = summary
+                best_year_note = year_note
+
+        if best_src is not None:
+            self.best_source = best_src
+            self.best_summary = best_summary
+            self.display_score = best_score
+            self.year_mismatch_note = best_year_note
 
 
 @dataclass
@@ -30,6 +197,7 @@ class _Stats:
     queries: dict[str, int] = field(default_factory=dict)
     retries: dict[str, int] = field(default_factory=dict)
     exhausted: dict[str, int] = field(default_factory=dict)
+    disabled: dict[str, str] = field(default_factory=dict)
 
     def record_query(self, source: str) -> None:
         self.queries[source] = self.queries.get(source, 0) + 1
@@ -40,19 +208,24 @@ class _Stats:
     def record_exhausted(self, source: str) -> None:
         self.exhausted[source] = self.exhausted.get(source, 0) + 1
 
+    def record_disabled(self, source: str, reason: str) -> None:
+        self.disabled[source] = reason
+
     def print_summary(self) -> None:
         all_sources = sorted(set(list(self.queries) + list(self.retries) + list(self.exhausted)))
-        if not all_sources:
-            return
-        print("[ref-checker] Query summary:", file=sys.stderr)
-        for src in all_sources:
-            q = self.queries.get(src, 0)
-            r = self.retries.get(src, 0)
-            e = self.exhausted.get(src, 0)
-            retry_str = f", {r} retr{'y' if r == 1 else 'ies'}" if r else ""
-            exhausted_str = f", {e} exhausted" if e else ""
-            print(
-                f"[ref-checker]   {src:20s} {q:3d} quer{'y' if q == 1 else 'ies'}"
-                f"{retry_str}{exhausted_str}",
-                file=sys.stderr,
-            )
+        if all_sources:
+            print("[ref-checker] Query summary:", file=sys.stderr)
+            for src in all_sources:
+                q = self.queries.get(src, 0)
+                r = self.retries.get(src, 0)
+                e = self.exhausted.get(src, 0)
+                retry_str = f", {r} retr{'y' if r == 1 else 'ies'}" if r else ""
+                exhausted_str = f", {e} exhausted" if e else ""
+                print(
+                    f"[ref-checker]   {src:20s} {q:3d} quer{'y' if q == 1 else 'ies'}"
+                    f"{retry_str}{exhausted_str}",
+                    file=sys.stderr,
+                )
+        if self.disabled:
+            srcs = ", ".join(sorted(self.disabled))
+            print(f"[ref-checker] Disabled this session: {srcs}", file=sys.stderr)
