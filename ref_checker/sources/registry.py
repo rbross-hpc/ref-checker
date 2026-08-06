@@ -26,11 +26,12 @@ DEFAULT_DELAYS: dict[str, float] = {
 
 
 def build_all_contexts() -> dict[str, SourceContext]:
-    """Build one :class:`SourceContext` per scholarly source, once.
+    """Build one :class:`SourceContext` per source (scholarly and liveness), once.
 
     Called once per ``check_references()`` run (see ``runner.py``) so every
     reference in that run reuses the same session per source — the actual
-    point of ``SourceContext``. Liveness sources (``github``, ``url``) don't
-    have contexts yet (Part 2 of the SourceContext work; see ``PLAN.md``).
+    point of ``SourceContext``.
     """
-    return {s.SOURCE_NAME: s.build_context() for s in SCHOLARLY_SOURCES}
+    return {
+        s.SOURCE_NAME: s.build_context() for s in SCHOLARLY_SOURCES + LIVENESS_SOURCES
+    }

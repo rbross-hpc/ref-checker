@@ -96,8 +96,10 @@ landed shape, and the external assessment at
 `../20260806-ref-checker-assessment.md` (§6, "HTTP behavior is shared
 conceptually, but not structurally").
 
-**Status: Part 1 done** (the 6 scholarly sources). **Part 2 pending**
-(the 2 liveness sources, `github.py`/`url.py` — see `BACKLOG.md`).
+**Status: both parts done.** Part 1 (the 6 scholarly sources) and Part 2
+(the 2 liveness sources, `github.py`/`url.py`) have both landed — every
+source module now has `build_context()` and takes a mandatory trailing
+`ctx: SourceContext`.
 
 **Scope decision**: `SourceContext` holds `session` + `credentials` only.
 Rate limiting (`_RateLimiter`) and retry (`_retry`) stay exactly where they
@@ -167,17 +169,35 @@ Scope: `openalex.py`, `crossref.py`, `osti.py`, `dblp.py`, `arxiv.py`, and
   `ctx.credentials` is a natural place to mutate a session-scoped "key is
   bad" flag (not implemented yet, just noting the dependency is in place).
 
-### Part 2 — extend to liveness sources (`github.py`, `url.py`) (pending)
+### Part 2 — extend to liveness sources (`github.py`, `url.py`) (done)
 
-Filed to `BACKLOG.md`. Extends the same `SourceContext` to
-`check_url(urls, ctx)` on both liveness sources, giving them connection
-pooling for the first time (currently bare `requests.head` per call, no
-session at all). Smaller scope than Part 1: 2 modules, different function
-shape (`check_url` returns a 3-tuple including dead-URL list, unlike the
-2-tuple scholarly functions), no existing direct unit tests to rewrite
-(only engine-level stubs, which are signature-agnostic and need no
-changes). `engine.py:call_liveness()` will need the same lazy-or-shared
-context lookup that `call()` already has.
+Extended the same `SourceContext` to `check_url(urls, ctx)` on both
+liveness sources, giving them connection pooling for the first time
+(previously bare `requests.head` per call, no session at all). Landed:
+
+- `github.py`/`url.py` each gained `build_context()` (User-Agent only, via
+  the same `sources/_http.py:build_session()` used by Part 1) and
+  `check_url` now takes a mandatory trailing `ctx: SourceContext`,
+  replacing the per-call `requests.head(..., headers={"User-Agent": ...})`
+  with `ctx.session.head(...)`.
+- `sources/registry.py:build_all_contexts()` now covers
+  `SCHOLARLY_SOURCES + LIVENESS_SOURCES` (was scholarly-only).
+- `engine.py:call_liveness()` gained the same `_ctx_for(src)` lazy-or-shared
+  context lookup that `call()` already had, and passes `ctx` as
+  `check_url`'s final arg.
+- Test rewrites: only one call site needed updating —
+  `tests/test_engine.py`'s `TestEvidenceLevel::test_github_liveness_is_live_resource_only`
+  override gained the trailing `ctx` param (confirming the plan's
+  prediction that engine-level stubs are signature-agnostic and mostly
+  didn't need changes).
+- New regression coverage:
+  `TestSourceContextReuse::test_liveness_source_reuses_context_across_references`
+  (`test_engine.py`) and
+  `test_same_session_reused_for_liveness_source_across_references`
+  (`test_runner.py`), mirroring the Part 1 scholarly-source reuse tests.
+- Manually verified against live network: `github.check_url()` and
+  `url.check_url()` directly, plus a full `ref-checker check` run against
+  a GitHub-URL reference.
 
 ## Testing
 

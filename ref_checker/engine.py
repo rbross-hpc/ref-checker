@@ -35,11 +35,11 @@ def lookup_reference(
     result; only sources named in *sources_to_query* are actually queried,
     and everything else is preserved from prior_result.
 
-    *contexts* maps scholarly source name -> SourceContext (session +
-    credentials), built once per ``check_references()`` run by
-    ``runner.py`` and threaded down here so every reference in the run
-    reuses the same session per source. When None (e.g. some direct-call
-    test paths), a fresh context is built lazily per source on first use.
+    *contexts* maps source name -> SourceContext (session + credentials),
+    built once per ``check_references()`` run by ``runner.py`` and
+    threaded down here so every reference in the run reuses the same
+    session per source. When None (e.g. some direct-call test paths), a
+    fresh context is built lazily per source on first use.
     """
     rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _DEFAULT_DELAYS)
     health = health if health is not None else SourceHealth(stats=stats)
@@ -172,6 +172,7 @@ def lookup_reference(
             return None, None
         if stats:
             stats.record_query(src_name, queried_by)
+        ctx = _ctx_for(src)
         errored = {"flag": False}
 
         def _on_exhausted() -> None:
@@ -179,7 +180,7 @@ def lookup_reference(
 
         try:
             out, cause, retry_after = _retry(
-                lambda: src.check_url(urls),
+                lambda: src.check_url(urls, ctx),
                 stats=stats,
                 source=src_name,
                 mode=queried_by,
