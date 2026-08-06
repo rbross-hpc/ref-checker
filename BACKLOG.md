@@ -4,83 +4,17 @@ Deferred work items — not scheduled, captured so they aren't lost.
 
 ## Documentation
 
-### PLAN.md refresh: package layout tree + sidecar section
-
-`PLAN.md`'s "Package layout" tree (lines 16–53) is stale: it predates
-`runtime.py`, `planner.py`, `model.py`, `sources/registry.py`, and now
-`engine.py` / `runner.py`. `check.py` is no longer "driver: lookup, rate
-limiting, orchestration" — it's a thin backward-compatible re-export shim
-over the modules below. Update the tree to something like:
-
-```
-    ├── results.py                 # LookupResult dataclass + _Stats
-    ├── model.py                   # QueryKind / OutcomeKind / EvidenceLevel / SourceOutcome
-    ├── runtime.py                 # _Shutdown, SourceHealth, _RateLimiter, _retry
-    ├── planner.py                 # _plan_ref_work: smart-rerun source selection
-    ├── engine.py                  # lookup_reference: assess one reference
-    ├── runner.py                  # check_references: thread pool, resume, reporting
-    ├── check.py                   # backward-compat re-export shim over the above
-    ├── format.py                  # output formatting (format_result, colors)
-    ├── sidecar.py                 # results sidecar I/O and resume policy
-    └── sources/
-        ├── registry.py            # static SCHOLARLY_SOURCES / ALL_SOURCE_NAMES lists
-        ├── ...
-```
-
-Separately, `PLAN.md` lines 362–380 describe the results sidecar but
-predate the error-handling / smart-re-run work. Update to reflect current
-reality:
-
-- `schema_version` is now `4` (v1, v2, and v3 are hard-rejected on load; a
-  WARNING is emitted when a recognized-but-outdated version is discarded).
-  v4 extended `refs_hash` to cover every lookup-relevant reference field
-  (title, authors, year, doi, arxiv_id, venue, url, github_url), not just
-  index+raw.
-- Each `references[i].result` carries a `per_source` map keyed by source name
-  (`openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, `arxiv`,
-  `github`, `url`). Entry shape:
-  ```
-  {
-    "status": "hit_id" | "hit_title" | "not_found" | "error" | "rate_limited"
-             | "disabled" | "skipped",
-    "queried_by": ["doi" | "arxiv_id" | "title" | "url", ...],
-    "score":   float | null,
-    "summary": <source-summary dict> | null,
-    "note":    str | null
-  }
-  ```
-  `status` values are backed by `ref_checker.model.OutcomeKind` (a `str`
-  Enum — sidecar JSON is unaffected, it's still plain strings on disk).
-  `rate_limited` is distinct from `error` as of schema v4's model work: it
-  means every retry attempt against that source hit `RateLimited`, as
-  opposed to a non-rate-limit exception. For `_plan_ref_work` smart-rerun
-  and `LookupResult.exhausted_sources` purposes the two are currently
-  treated identically (both retried under `retry_errored`, both count
-  toward "results may be incomplete") — the distinction is machine-visible
-  but does not yet change behavior.
-- The `per_source` map is the primitive that powers `_plan_ref_work` (smart
-  re-run: retry only sources that are missing / `disabled` / `error` /
-  `rate_limited`) and the session circuit breaker's per-ref attribution.
-- Legacy `LookupResult` fields (`best_summary`, `display_score`, `best_source`,
-  `doi_found_in`, `arxiv_found_in`, `exhausted_sources`, ...) are derived
-  views recomputed by `LookupResult.recompute_best()` from `per_source`.
-- `LookupResult.evidence` (a `ref_checker.model.EvidenceLevel`) is an
-  additive, finer-grained classification computed alongside the coarse
-  `status` (`OK`/`CLOSEST`/`NO MATCH`): `confirmed_identifier`,
-  `strong_metadata_match`, `weak_or_ambiguous_match`, `live_resource_only`,
-  `not_found`, or `incomplete`. It distinguishes claims that `status`
-  collapses together — e.g. a confirmed DOI and a merely-live URL both
-  currently display as `OK`, but have different `evidence` values.
-
 ### Consider renaming the OK/CLOSEST/NO MATCH display status
 
 The coarse `status` field (`OK` / `CLOSEST` / `NO MATCH`, computed by
 `sidecar.status_label()`) collapses several distinct claims into `OK`:
 a confirmed DOI/arXiv-ID match, a strong (>= 0.90) title-search match, and
 a bare URL-liveness check with no bibliographic record at all. The new
-additive `LookupResult.evidence` field (see above) now carries this finer
-distinction without changing `status`, `_plan_ref_work`, or `needs_retry`
-— deliberately, so it could ship without a second sidecar schema bump
+additive `LookupResult.evidence` field (see
+[docs/lookup-engine.md](docs/lookup-engine.md#persistent-result-model-resultspy-sidecarpy))
+now carries this finer distinction without changing `status`,
+`_plan_ref_work`, or `needs_retry` — deliberately, so it could ship without
+a second sidecar schema bump
 right after v4's index/hash fixes.
 
 Once `evidence` has been in the field for a while and any external
@@ -99,6 +33,40 @@ Standalone doc describing the results sidecar as a consumable format, parallel
 to the existing `references/schema.md` (which covers the input refs JSON).
 Only worth doing if programmatic sidecar consumers outside `ref-checker`
 itself become a thing.
+
+## Matching quality
+
+### Checked-in matching-quality benchmark corpus
+
+The current title score (`similarity.py`) is a reasonable baseline, but no
+checked-in corpus measures it. Build a small benchmark covering: exact
+citations, abbreviated titles, OCR damage, wrong years, preprint vs.
+published versions, similar papers by the same authors, generic titles that
+should not auto-match, and intentionally unresolvable references. Measure
+false confirmations, false rejections, and ambiguous cases before changing
+title/year thresholds or adding author/venue scoring. See
+[docs/matching.md](docs/matching.md).
+
+### arXiv title search recall
+
+`sources/arxiv.py` uses `ti:"<title>"` for title search, which requires a
+fairly exact match. A looser `all:` query would improve recall for titles
+with PDF-extraction artifacts that survive the repair pass in
+`extract.py`, at the cost of potentially noisier candidates.
+
+## Performance
+
+### Cross-run API response cache
+
+Individual API responses are not cached across runs. Re-running on a
+different paper (or after `--no-resume`) repeats all source queries. The
+refs cache and results sidecar mitigate this for iterative work on the
+*same* paper (see [docs/lookup-engine.md](docs/lookup-engine.md#concurrency-runnerpy))
+but don't share across papers. A persistent cache (likely SQLite, keyed by
+source + query mode + normalized query + cache age) would let a second
+paper citing the same DOI skip re-querying it. Worth doing once the source
+adapter interface (below, or a future `Protocol`) makes it natural to wrap
+adapter calls in a caching layer.
 
 ## Sources
 
