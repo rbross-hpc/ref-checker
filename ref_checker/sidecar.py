@@ -10,13 +10,24 @@ from pathlib import Path
 from .extract import Reference
 from .results import LookupResult
 
-SIDECAR_SCHEMA_VERSION = 3
-_OUTDATED_SCHEMA_VERSIONS = {1, 2}
+SIDECAR_SCHEMA_VERSION = 4
+_OUTDATED_SCHEMA_VERSIONS = {1, 2, 3}
 
 
 def refs_hash(refs: list[Reference]) -> str:
-    raw = "\n".join(str(r.index) + r.raw for r in sorted(refs, key=lambda r: r.index))
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    """Hash every lookup-relevant field of every reference.
+
+    Covers the full canonical dict (index, raw, title, authors, year, doi,
+    arxiv_id, venue, url, github_url) rather than just index+raw, so editing
+    a structured field (e.g. correcting a DOI or title) without touching
+    raw reliably invalidates any sidecar computed against the old value.
+    """
+    canonical = json.dumps(
+        [r.to_dict() for r in sorted(refs, key=lambda r: r.index)],
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def status_label(result: LookupResult, min_match: float) -> str:

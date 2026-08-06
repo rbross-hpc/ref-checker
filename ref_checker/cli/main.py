@@ -226,7 +226,11 @@ def run_check(args) -> None:
             print(f"Error: refs JSON not found: {refs_path}", file=sys.stderr)
             sys.exit(1)
         data = json.loads(refs_path.read_text(encoding="utf-8"))
-        refs = [extract.Reference.from_dict(r) for r in data]
+        try:
+            refs = extract.load_references_from_list(data, strict=True)
+        except extract.ReferenceLoadError as exc:
+            print(f"Error: {refs_path}: {exc}", file=sys.stderr)
+            sys.exit(1)
         print(f"[ref-checker] Loaded {len(refs)} reference(s) from {refs_path}", file=sys.stderr)
         source_name = refs_path.stem
         default_sidecar = refs_path.parent / f"{refs_path.stem}.results.json"

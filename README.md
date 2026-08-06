@@ -80,9 +80,10 @@ ref-checker check --refs-json refs.json --results-json out.json
 Looks up references directly from a JSON file — no PDF and no `OPENAI_API_KEY`
 required. The refs JSON must be a bare JSON array of ref dicts, each with at
 minimum a `title` field. All other fields (`index`, `raw`, `authors`, `year`,
-`doi`, `arxiv_id`, `venue`, `url`) are optional. `index` defaults to 0 and is
-auto-sequenced from the list position. The result sidecar defaults to
-`<refs-stem>.results.json`.
+`doi`, `arxiv_id`, `venue`, `url`) are optional. If `index` is omitted, it is
+auto-assigned from the entry's 1-based position in the list (matching
+citation-style display, e.g. `[1]`, `[2]`, ...). Duplicate explicit indices
+are rejected. The result sidecar defaults to `<refs-stem>.results.json`.
 
 Options:
 

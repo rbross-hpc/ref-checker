@@ -185,6 +185,92 @@ class Reference:
         )
 
 
+class ReferenceLoadError(ValueError):
+    """Raised by load_references_from_list on a structurally invalid input."""
+
+
+def load_references_from_list(
+    data: object,
+    strict: bool = True,
+) -> list[Reference]:
+    """Parse a bare JSON array of reference dicts into ``Reference`` objects.
+
+    Shared by both ``check --refs-json`` and ``show`` so the two commands
+    interpret the same input identically. Behavior:
+
+    - The top-level value must be a list of dicts; otherwise raises
+      ``ReferenceLoadError`` regardless of *strict*.
+    - Entries missing an explicit ``index`` are auto-assigned 1-based
+      positions from their position in the list (matching citation-style
+      display, e.g. ``[1]``, ``[2]``, ...).
+    - Duplicate explicit indices are rejected — raises ``ReferenceLoadError``
+      regardless of *strict*, since silently colliding indices would corrupt
+      sidecar state and in-memory dicts keyed by index.
+    - If *strict* is True (the default — used by ``check``, which performs
+      paid/rate-limited API calls), a malformed individual entry raises
+      ``ReferenceLoadError`` immediately.
+    - If *strict* is False (used by ``show``, a read-only inspection tool),
+      a malformed individual entry is skipped, and a warning is printed to
+      stderr rather than raising.
+    """
+    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
+        raise ReferenceLoadError(
+            "expected a bare JSON array of reference objects"
+        )
+
+    # First pass: resolve the final index for every entry (explicit, or
+    # auto-assigned from 1-based list position) and reject collisions
+    # before constructing any Reference objects. Malformed explicit
+    # indices (non-integer) are treated as parse errors, subject to
+    # *strict* like any other malformed field.
+    resolved: list[tuple[int, dict]] = []
+    seen_indices: set[int] = set()
+
+    for position, entry in enumerate(data, start=1):
+        if "index" in entry:
+            try:
+                idx = int(entry["index"])
+            except (TypeError, ValueError) as exc:
+                if strict:
+                    raise ReferenceLoadError(
+                        f"invalid index at list position {position}: {entry['index']!r}"
+                    ) from exc
+                print(
+                    f"Warning: could not parse ref #{position}: invalid index "
+                    f"{entry['index']!r}",
+                    file=sys.stderr,
+                )
+                continue
+        else:
+            idx = position
+
+        if idx in seen_indices:
+            raise ReferenceLoadError(
+                f"duplicate reference index {idx} (entry at list position {position})"
+            )
+        seen_indices.add(idx)
+        resolved.append((idx, {**entry, "index": idx}))
+
+    refs: list[Reference] = []
+    for position, (idx, entry_for_index) in enumerate(resolved, start=1):
+        try:
+            ref = Reference.from_dict(entry_for_index)
+        except Exception as exc:
+            if strict:
+                raise ReferenceLoadError(
+                    f"could not parse reference at list position {position} "
+                    f"(index {idx}): {exc}"
+                ) from exc
+            print(
+                f"Warning: could not parse ref #{idx}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+        refs.append(ref)
+
+    return refs
+
+
 def _fix_split_words(text: str) -> str:
     """Repair PDF text extraction artifacts.
 

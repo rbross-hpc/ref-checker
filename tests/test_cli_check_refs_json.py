@@ -113,3 +113,61 @@ def test_refs_json_missing_file_exits(tmp_path, capsys):
         run_check(args)
 
     assert exc_info.value.code != 0
+
+
+@patch("ref_checker.cli.main.check.check_references")
+def test_refs_json_missing_indices_auto_assigned_1_based(mock_check, tmp_path):
+    refs = [
+        {"title": "First Paper"},
+        {"title": "Second Paper"},
+        {"title": "Third Paper"},
+    ]
+    refs_path = _make_refs_json(tmp_path, refs=refs)
+    args = _make_args(refs_json=refs_path, no_results_json=True)
+
+    run_check(args)
+
+    refs_arg = mock_check.call_args[0][0]
+    assert [r.index for r in refs_arg] == [1, 2, 3]
+
+
+def test_refs_json_duplicate_indices_rejected(tmp_path, capsys):
+    refs = [
+        {"index": 1, "title": "A"},
+        {"index": 1, "title": "B"},
+    ]
+    refs_path = _make_refs_json(tmp_path, refs=refs)
+    args = _make_args(refs_json=refs_path, no_results_json=True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_check(args)
+
+    assert exc_info.value.code != 0
+    captured = capsys.readouterr()
+    assert "duplicate" in captured.err.lower()
+
+
+def test_check_and_show_assign_identical_missing_indices(tmp_path, capsys):
+    from ref_checker.cli.show import _show_refs_list
+
+    refs = [
+        {"title": "First Paper"},
+        {"title": "Second Paper"},
+        {"title": "Third Paper"},
+    ]
+    refs_path = _make_refs_json(tmp_path, refs=refs)
+
+    with patch("ref_checker.cli.main.check.check_references") as mock_check:
+        args = _make_args(refs_json=refs_path, no_results_json=True)
+        run_check(args)
+    check_indices = [r.index for r in mock_check.call_args[0][0]]
+
+    _show_refs_list(json.loads(refs_path.read_text()))
+    show_output = capsys.readouterr().out
+    show_indices = [
+        int(line.split("]")[0].lstrip("["))
+        for line in show_output.splitlines()
+        if line.startswith("[")
+    ]
+
+    assert check_indices == show_indices == [1, 2, 3]

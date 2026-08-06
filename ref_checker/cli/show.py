@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from .. import sidecar as _sidecar
-from ..extract import Reference
+from ..extract import Reference, ReferenceLoadError, load_references_from_list
 from ..format import _format_ref_header, format_result
 
 
@@ -111,14 +111,12 @@ def _show_sidecar(data: dict, min_match: float, with_osti_id: bool) -> int:
 
 
 def _show_refs_list(refs_list: list[dict]) -> int:
-    for i, ref_dict in enumerate(refs_list, start=1):
-        if "index" not in ref_dict:
-            ref_dict = {**ref_dict, "index": i}
-        try:
-            ref = Reference.from_dict(ref_dict)
-        except Exception as exc:
-            print(f"Warning: could not parse ref #{i}: {exc}", file=sys.stderr)
-            continue
+    try:
+        refs = load_references_from_list(refs_list, strict=False)
+    except ReferenceLoadError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    for ref in refs:
         print(_format_unprocessed(ref))
         print()
     return 0

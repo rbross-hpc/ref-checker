@@ -59,6 +59,41 @@ class TestRefsHash:
         refs_b = [_ref(1, "raw1"), _ref(2, "raw2")]
         assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
 
+    def test_changes_when_title_differs_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="Original Title")]
+        refs_b = [Reference(index=1, raw="same raw", title="Corrected Title")]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_changes_when_doi_differs_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="T", doi="10.1/a")]
+        refs_b = [Reference(index=1, raw="same raw", title="T", doi="10.1/b")]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_changes_when_year_differs_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="T", year=2020)]
+        refs_b = [Reference(index=1, raw="same raw", title="T", year=2021)]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_changes_when_authors_differ_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="T", authors=["A. One"])]
+        refs_b = [Reference(index=1, raw="same raw", title="T", authors=["B. Two"])]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_changes_when_arxiv_id_differs_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="T", arxiv_id="2301.00001")]
+        refs_b = [Reference(index=1, raw="same raw", title="T", arxiv_id="2301.00002")]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_changes_when_url_differs_but_raw_same(self):
+        refs_a = [Reference(index=1, raw="same raw", title="T", url="https://a.example")]
+        refs_b = [Reference(index=1, raw="same raw", title="T", url="https://b.example")]
+        assert sidecar.refs_hash(refs_a) != sidecar.refs_hash(refs_b)
+
+    def test_unchanged_when_nothing_differs(self):
+        refs_a = [Reference(index=1, raw="raw", title="T", year=2020, doi="10.1/x")]
+        refs_b = [Reference(index=1, raw="raw", title="T", year=2020, doi="10.1/x")]
+        assert sidecar.refs_hash(refs_a) == sidecar.refs_hash(refs_b)
+
 
 class TestStatusLabel:
     def test_id_confirmed_is_ok(self):
@@ -210,7 +245,7 @@ class TestWriteLoad:
         assert entries == {}
         assert hash_ok is False
 
-    @pytest.mark.parametrize("old_version", [1, 2])
+    @pytest.mark.parametrize("old_version", [1, 2, 3])
     def test_outdated_schema_version_is_rejected(self, tmp_path, old_version):
         """Outdated schema versions must be hard-rejected (no upgrade)."""
         path = tmp_path / f"v{old_version}.json"
@@ -223,7 +258,7 @@ class TestWriteLoad:
         assert entries == {}
         assert hash_ok is False
 
-    @pytest.mark.parametrize("old_version", [1, 2])
+    @pytest.mark.parametrize("old_version", [1, 2, 3])
     def test_outdated_schema_version_emits_warning(self, tmp_path, capsys, old_version):
         """Outdated but recognized schema versions emit a WARNING on load."""
         path = tmp_path / f"v{old_version}.json"

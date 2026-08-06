@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `extract.load_references_from_list()`: a single shared loader used by both
+  `check --refs-json` and `show`, so the two commands interpret the same
+  bare refs JSON identically. Missing `index` fields are auto-assigned from
+  the entry's 1-based position (matching citation-style display); duplicate
+  explicit indices are rejected with a clear error.
+
+### Fixed
+
+- **Sidecar identity bug**: `check --refs-json` previously passed entries
+  straight to `Reference.from_dict()`, which defaults a missing `index` to
+  `0` — so multiple ref entries without an explicit `index` could silently
+  collide on index `0`, corrupting in-memory dicts, the sidecar, and output.
+  `show` already auto-assigned indices correctly; `check` now matches it.
+- **Sidecar hash under-specification**: `refs_hash()` previously hashed only
+  `index` + `raw`, so editing a structured field (title, DOI, year, authors,
+  etc.) without touching `raw` left a stale sidecar looking valid. The hash
+  now covers every lookup-relevant field. This changes the hash output for
+  all existing sidecars — see the `SIDECAR_SCHEMA_VERSION` bump below.
+
+### Changed
+
+- `SIDECAR_SCHEMA_VERSION` bumped `3` → `4`. Sidecars written by v3 (and all
+  earlier versions) are hard-rejected on load with a WARNING, exactly like
+  the v1/v2 rejection already in place — no silent partial-upgrade.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added
