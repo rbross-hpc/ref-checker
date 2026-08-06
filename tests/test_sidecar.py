@@ -163,6 +163,31 @@ class TestResultRoundtrip:
         r2 = sidecar.result_from_dict(d)
         assert r2.per_source == r.per_source
 
+    def test_evidence_roundtrip(self):
+        from ref_checker.model import EvidenceLevel
+
+        r = _ok_result()
+        r.evidence = EvidenceLevel.CONFIRMED_IDENTIFIER
+        d = sidecar.result_to_dict(r, 0.80)
+        assert d["evidence"] == "confirmed_identifier"
+        r2 = sidecar.result_from_dict(d)
+        assert r2.evidence == EvidenceLevel.CONFIRMED_IDENTIFIER
+
+    def test_evidence_none_roundtrips_as_none(self):
+        r = LookupResult()
+        d = sidecar.result_to_dict(r, 0.80)
+        assert d["evidence"] is None
+        r2 = sidecar.result_from_dict(d)
+        assert r2.evidence is None
+
+    def test_missing_evidence_key_loads_as_none(self):
+        """A sidecar written before this field existed (or hand-edited to
+        omit it) should still load cleanly with evidence=None."""
+        d = sidecar.result_to_dict(_ok_result(), 0.80)
+        del d["evidence"]
+        r2 = sidecar.result_from_dict(d)
+        assert r2.evidence is None
+
 
 class TestNeedsRetry:
     def test_ok_no_retry(self):

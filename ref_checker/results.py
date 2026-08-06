@@ -5,22 +5,47 @@ import sys
 import threading
 from dataclasses import dataclass, field
 
+from .model import EvidenceLevel, OutcomeKind, SourceOutcome
 from .similarity import title_ratio
 
 _YEAR_MISMATCH_PENALTY = 0.10
 
+# Shared with format._osti_id_if_confident: the score a title-search hit
+# must clear (after any year-mismatch penalty) to count as a confident
+# match rather than merely a "closest candidate". Single source of truth
+# so the two call sites (overall best-match scoring here, and OSTI's
+# per-source confidence check in format.py) can't silently drift apart.
+STRONG_MATCH_THRESHOLD = 0.90
+
 _LIVENESS_SOURCES = ("github", "url")
 _ID_MODES = ("doi", "arxiv_id", "url")
 
+
+def apply_year_mismatch_penalty(
+    score: float,
+    ref_year: int | None,
+    cand_year: int | None,
+) -> float:
+    """Subtract _YEAR_MISMATCH_PENALTY from *score* if both years are known
+    and differ; otherwise return *score* unchanged. Floored at 0.0.
+    """
+    if ref_year and cand_year and ref_year != cand_year:
+        return max(0.0, score - _YEAR_MISMATCH_PENALTY)
+    return score
+
+
 # When multiple lookup modes are tried against the same source, keep the
-# most-informative status. Higher number wins.
+# most-informative status. Higher number wins. rate_limited ranks alongside
+# error: both mean "we did not get real information from this attempt",
+# just with a different cause.
 _STATUS_PRECEDENCE = {
-    "hit_id":    5,
-    "hit_title": 4,
-    "error":     3,
-    "not_found": 2,
-    "disabled":  1,
-    "skipped":   0,
+    OutcomeKind.HIT_ID:       5,
+    OutcomeKind.HIT_TITLE:    4,
+    OutcomeKind.ERROR:        3,
+    OutcomeKind.RATE_LIMITED: 3,
+    OutcomeKind.NOT_FOUND:    2,
+    OutcomeKind.DISABLED:     1,
+    OutcomeKind.SKIPPED:      0,
 }
 
 
@@ -43,11 +68,24 @@ class LookupResult:
     exhausted_sources: list[str] = field(default_factory=list)
     url_liveness_check: bool = False
     per_source: dict[str, dict] = field(default_factory=dict)
+    evidence: EvidenceLevel | None = None  # additive; see recompute_best
+
+    def source_outcome(self, source: str) -> SourceOutcome | None:
+        """Typed view over per_source[source], or None if never queried.
+
+        Additive convenience accessor for callers that want attribute
+        access (SourceOutcome) instead of raw dict.get() calls against
+        per_source — does not replace per_source as the underlying storage.
+        """
+        entry = self.per_source.get(source)
+        if entry is None:
+            return None
+        return SourceOutcome.from_dict(source, entry)
 
     def record_source(
         self,
         source: str,
-        status: str,
+        status: OutcomeKind | str,
         *,
         queried_by: str | None = None,
         score: float | None = None,
@@ -114,13 +152,14 @@ class LookupResult:
         self.arxiv_found_in = []
         self.exhausted_sources = []
         self.url_liveness_check = False
+        self.evidence = None
 
         for src, entry in self.per_source.items():
             status = entry.get("status")
-            if status == "error":
+            if status in (OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED):
                 if src not in self.exhausted_sources:
                     self.exhausted_sources.append(src)
-            if status == "hit_id":
+            if status == OutcomeKind.HIT_ID:
                 qby = entry.get("queried_by") or []
                 if "doi" in qby and src not in self.doi_found_in:
                     self.doi_found_in.append(src)
@@ -129,7 +168,7 @@ class LookupResult:
 
         id_hits = [
             (src, entry) for src, entry in self.per_source.items()
-            if entry.get("status") == "hit_id" and entry.get("summary")
+            if entry.get("status") == OutcomeKind.HIT_ID and entry.get("summary")
         ]
         if id_hits:
             id_hits.sort(key=lambda kv: (kv[0] in _LIVENESS_SOURCES, kv[0]))
@@ -144,6 +183,7 @@ class LookupResult:
                 self.display_score = None
                 if best_src == "url":
                     self.url_liveness_check = True
+                self.evidence = EvidenceLevel.LIVE_RESOURCE_ONLY
             else:
                 cand_title = summary.get("title") if summary else None
                 if ref.title and cand_title:
@@ -163,11 +203,12 @@ class LookupResult:
                     self.year_mismatch_note = (
                         f"ref year={ref_year}, match year={cand_year}"
                     )
+                self.evidence = EvidenceLevel.CONFIRMED_IDENTIFIER
             return
 
         title_hits = [
             (src, entry) for src, entry in self.per_source.items()
-            if entry.get("status") == "hit_title" and entry.get("summary") is not None
+            if entry.get("status") == OutcomeKind.HIT_TITLE and entry.get("summary") is not None
         ]
         best_score = -1.0
         best_src = None
@@ -178,13 +219,13 @@ class LookupResult:
             raw_score = entry.get("score")
             if raw_score is None:
                 continue
-            score = raw_score
-            year_note = None
             ref_year = ref.year
             cand_year = summary.get("year")
-            if ref_year and cand_year and ref_year != cand_year:
-                score = max(0.0, score - _YEAR_MISMATCH_PENALTY)
-                year_note = f"ref year={ref_year}, match year={cand_year}"
+            score = apply_year_mismatch_penalty(raw_score, ref_year, cand_year)
+            year_note = (
+                f"ref year={ref_year}, match year={cand_year}"
+                if score != raw_score else None
+            )
             if score > best_score:
                 best_score = score
                 best_src = src
@@ -196,6 +237,15 @@ class LookupResult:
             self.best_summary = best_summary
             self.display_score = best_score
             self.year_mismatch_note = best_year_note
+
+        if best_score >= STRONG_MATCH_THRESHOLD:
+            self.evidence = EvidenceLevel.STRONG_METADATA_MATCH
+        elif best_score >= min_match:
+            self.evidence = EvidenceLevel.WEAK_OR_AMBIGUOUS_MATCH
+        elif self.exhausted_sources or self.dead_urls:
+            self.evidence = EvidenceLevel.INCOMPLETE
+        else:
+            self.evidence = EvidenceLevel.NOT_FOUND
 
 
 _MODE_ORDER = ("doi", "arxiv_id", "title", "url")

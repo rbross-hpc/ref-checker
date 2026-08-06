@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .extract import Reference
 from .format import format_result
+from .model import OutcomeKind
 from .planner import _plan_ref_work
 from .results import LookupResult, _Stats
 from .runtime import (
@@ -102,7 +103,7 @@ def lookup_reference(
     def call(src, fn_name: str, queried_by: str, *args) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
-            result.record_source(src_name, "disabled", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
                                  note="session circuit breaker")
             return None, None
         fn = getattr(src, fn_name, None)
@@ -112,11 +113,11 @@ def lookup_reference(
         # Re-check after rl.wait — another worker may have disabled the source
         # while we were waiting on the per-source rate limiter.
         if health.is_disabled(src_name):
-            result.record_source(src_name, "disabled", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
                                  note="session circuit breaker")
             return None, None
         if shutdown is not None and shutdown.requested():
-            result.record_source(src_name, "skipped", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.SKIPPED, queried_by=queried_by,
                                  note="aborted by user")
             return None, None
         if stats:
@@ -142,7 +143,7 @@ def lookup_reference(
                     f"quota exhausted (Retry-After={retry_after:.0f}s, "
                     f"~{_format_duration(retry_after or 0.0)})"
                 )
-                result.record_source(src_name, "error", queried_by=queried_by,
+                result.record_source(src_name, OutcomeKind.RATE_LIMITED, queried_by=queried_by,
                                      note=note)
                 reason = (
                     f"server requested Retry-After={retry_after:.0f}s "
@@ -150,14 +151,18 @@ def lookup_reference(
                 )
                 health.disable(src_name, reason)
                 return None, None
-            note = ("rate-limit retries exhausted"
-                    if cause == "rate_limit" else "retries exhausted")
-            result.record_source(src_name, "error", queried_by=queried_by,
-                                 note=note)
+            rate_limited = cause == "rate_limit"
+            note = "rate-limit retries exhausted" if rate_limited else "retries exhausted"
+            result.record_source(
+                src_name,
+                OutcomeKind.RATE_LIMITED if rate_limited else OutcomeKind.ERROR,
+                queried_by=queried_by,
+                note=note,
+            )
             # Rate-limit exhaustion advances the rate-limit counter (which
             # can independently disable the source at RATE_LIMIT_THRESHOLD);
             # real errors advance the regular error counter.
-            health.record(src_name, "rate_limited" if cause == "rate_limit" else "error")
+            health.record(src_name, "rate_limited" if rate_limited else "error")
             return None, None
         if out is None:
             # Shutdown-before-attempt path.
@@ -165,11 +170,11 @@ def lookup_reference(
 
         summary, sim = out
         if summary is None:
-            result.record_source(src_name, "not_found", queried_by=queried_by)
+            result.record_source(src_name, OutcomeKind.NOT_FOUND, queried_by=queried_by)
             health.record(src_name, "not_found")
             return None, None
 
-        status = "hit_id" if queried_by in ("doi", "arxiv_id") else "hit_title"
+        status = OutcomeKind.HIT_ID if queried_by in ("doi", "arxiv_id") else OutcomeKind.HIT_TITLE
         result.record_source(src_name, status, queried_by=queried_by,
                              score=sim, summary=summary)
         health.record(src_name, status)
@@ -178,18 +183,18 @@ def lookup_reference(
     def call_liveness(src, urls: str, queried_by: str) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
-            result.record_source(src_name, "disabled", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
                                  note="session circuit breaker")
             return None, None
         rl.wait(src_name)
         # Re-check after rl.wait — another worker may have disabled the source
         # while we were waiting on the per-source rate limiter.
         if health.is_disabled(src_name):
-            result.record_source(src_name, "disabled", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
                                  note="session circuit breaker")
             return None, None
         if shutdown is not None and shutdown.requested():
-            result.record_source(src_name, "skipped", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.SKIPPED, queried_by=queried_by,
                                  note="aborted by user")
             return None, None
         if stats:
@@ -218,7 +223,7 @@ def lookup_reference(
                     f"quota exhausted (Retry-After={retry_after:.0f}s, "
                     f"~{_format_duration(retry_after or 0.0)})"
                 )
-                result.record_source(src_name, "error", queried_by=queried_by,
+                result.record_source(src_name, OutcomeKind.RATE_LIMITED, queried_by=queried_by,
                                      note=note)
                 reason = (
                     f"server requested Retry-After={retry_after:.0f}s "
@@ -226,11 +231,15 @@ def lookup_reference(
                 )
                 health.disable(src_name, reason)
                 return None, None
-            note = ("rate-limit retries exhausted"
-                    if cause == "rate_limit" else "retries exhausted")
-            result.record_source(src_name, "error", queried_by=queried_by,
-                                 note=note)
-            health.record(src_name, "rate_limited" if cause == "rate_limit" else "error")
+            rate_limited = cause == "rate_limit"
+            note = "rate-limit retries exhausted" if rate_limited else "retries exhausted"
+            result.record_source(
+                src_name,
+                OutcomeKind.RATE_LIMITED if rate_limited else OutcomeKind.ERROR,
+                queried_by=queried_by,
+                note=note,
+            )
+            health.record(src_name, "rate_limited" if rate_limited else "error")
             return None, None
         if out is None:
             return None, None
@@ -240,12 +249,12 @@ def lookup_reference(
             if d not in result.dead_urls:
                 result.dead_urls.append(d)
         if summary is None:
-            result.record_source(src_name, "not_found", queried_by=queried_by,
+            result.record_source(src_name, OutcomeKind.NOT_FOUND, queried_by=queried_by,
                                  note=(f"dead urls: {len(dead)}" if dead else None))
             health.record(src_name, "not_found")
             return None, None
 
-        result.record_source(src_name, "hit_id", queried_by=queried_by,
+        result.record_source(src_name, OutcomeKind.HIT_ID, queried_by=queried_by,
                              score=1.0, summary=summary)
         health.record(src_name, "hit_id")
         return summary, sim
@@ -263,7 +272,7 @@ def lookup_reference(
     # --- arXiv ID lookup (before scholarly loop) ---
     def _id_confirmed() -> bool:
         return any(
-            e.get("status") == "hit_id"
+            e.get("status") == OutcomeKind.HIT_ID
             for e in result.per_source.values()
         )
 
@@ -302,7 +311,7 @@ def lookup_reference(
             # Only title-search if we don't already have a strong title hit ≥ 0.90
             best_title = 0.0
             for entry in result.per_source.values():
-                if entry.get("status") == "hit_title" and entry.get("score") is not None:
+                if entry.get("status") == OutcomeKind.HIT_TITLE and entry.get("score") is not None:
                     if entry["score"] > best_title:
                         best_title = entry["score"]
             if best_title < 0.90:

@@ -13,6 +13,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bare refs JSON identically. Missing `index` fields are auto-assigned from
   the entry's 1-based position (matching citation-style display); duplicate
   explicit indices are rejected with a clear error.
+- `ref_checker.model`: a typed domain model layer. `QueryKind` and
+  `OutcomeKind` are `str`-subclassed enums backing the existing
+  `per_source[name]["status"]`/`["queried_by"]` string values (sidecar JSON
+  is byte-compatible — no schema change from this alone). `EvidenceLevel`
+  is a new, additive, finer-grained classification of what a lookup
+  established (`confirmed_identifier`, `strong_metadata_match`,
+  `weak_or_ambiguous_match`, `live_resource_only`, `not_found`,
+  `incomplete`), stored as `LookupResult.evidence` / sidecar
+  `result.evidence` alongside the existing coarse `OK`/`CLOSEST`/`NO MATCH`
+  status — it distinguishes claims that status collapses together, e.g. a
+  confirmed DOI vs. a merely-live URL both currently display as `OK`.
+  `SourceOutcome` is an optional typed accessor over one
+  `per_source[name]` entry, available via `LookupResult.source_outcome()`.
+- A `rate_limited` `OutcomeKind`, now actually written into
+  `per_source[name]["status"]` when a source's retries are exhausted
+  because every attempt was rate-limited (previously such attempts were
+  indistinguishable from a generic `error` in the stored per-source
+  outcome, even though the session-level circuit breaker already tracked
+  the distinction internally). Currently ranked and handled identically to
+  `error` for retry-planning and `exhausted_sources` purposes — see
+  `BACKLOG.md` for the rationale.
 
 ### Fixed
 
@@ -26,6 +47,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   etc.) without touching `raw` left a stale sidecar looking valid. The hash
   now covers every lookup-relevant field. This changes the hash output for
   all existing sidecars — see the `SIDECAR_SCHEMA_VERSION` bump below.
+- **Duplicated OSTI confidence policy**: `format._osti_id_if_confident()`
+  independently reimplemented the year-mismatch-penalty and
+  strong-match-threshold logic already used by
+  `LookupResult.recompute_best()`. Both now call a single shared
+  `results.apply_year_mismatch_penalty()` helper and reference the same
+  `results.STRONG_MATCH_THRESHOLD` constant, so the two policies cannot
+  silently drift apart. (Note: OSTI's confidence check still evaluates
+  OSTI's own per-source score, not the overall `LookupResult.evidence` —
+  those answer different questions when another source has a stronger
+  match than OSTI.)
 
 ### Changed
 

@@ -19,19 +19,57 @@ error-handling / smart-re-run work. Update to reflect current reality:
   `github`, `url`). Entry shape:
   ```
   {
-    "status": "hit_id" | "hit_title" | "not_found" | "error" | "disabled" | "skipped",
+    "status": "hit_id" | "hit_title" | "not_found" | "error" | "rate_limited"
+             | "disabled" | "skipped",
     "queried_by": ["doi" | "arxiv_id" | "title" | "url", ...],
     "score":   float | null,
     "summary": <source-summary dict> | null,
     "note":    str | null
   }
   ```
+  `status` values are backed by `ref_checker.model.OutcomeKind` (a `str`
+  Enum — sidecar JSON is unaffected, it's still plain strings on disk).
+  `rate_limited` is distinct from `error` as of schema v4's model work: it
+  means every retry attempt against that source hit `RateLimited`, as
+  opposed to a non-rate-limit exception. For `_plan_ref_work` smart-rerun
+  and `LookupResult.exhausted_sources` purposes the two are currently
+  treated identically (both retried under `retry_errored`, both count
+  toward "results may be incomplete") — the distinction is machine-visible
+  but does not yet change behavior.
 - The `per_source` map is the primitive that powers `_plan_ref_work` (smart
-  re-run: retry only sources that are missing / `disabled` / `error`) and the
-  session circuit breaker's per-ref attribution.
+  re-run: retry only sources that are missing / `disabled` / `error` /
+  `rate_limited`) and the session circuit breaker's per-ref attribution.
 - Legacy `LookupResult` fields (`best_summary`, `display_score`, `best_source`,
   `doi_found_in`, `arxiv_found_in`, `exhausted_sources`, ...) are derived
   views recomputed by `LookupResult.recompute_best()` from `per_source`.
+- `LookupResult.evidence` (a `ref_checker.model.EvidenceLevel`) is an
+  additive, finer-grained classification computed alongside the coarse
+  `status` (`OK`/`CLOSEST`/`NO MATCH`): `confirmed_identifier`,
+  `strong_metadata_match`, `weak_or_ambiguous_match`, `live_resource_only`,
+  `not_found`, or `incomplete`. It distinguishes claims that `status`
+  collapses together — e.g. a confirmed DOI and a merely-live URL both
+  currently display as `OK`, but have different `evidence` values.
+
+### Consider renaming the OK/CLOSEST/NO MATCH display status
+
+The coarse `status` field (`OK` / `CLOSEST` / `NO MATCH`, computed by
+`sidecar.status_label()`) collapses several distinct claims into `OK`:
+a confirmed DOI/arXiv-ID match, a strong (>= 0.90) title-search match, and
+a bare URL-liveness check with no bibliographic record at all. The new
+additive `LookupResult.evidence` field (see above) now carries this finer
+distinction without changing `status`, `_plan_ref_work`, or `needs_retry`
+— deliberately, so it could ship without a second sidecar schema bump
+right after v4's index/hash fixes.
+
+Once `evidence` has been in the field for a while and any external
+scripts/dashboards built against the current `status` strings have had a
+chance to migrate to `evidence`, consider whether `status` itself should
+be renamed to something like `CONFIRMED` / `AMBIGUOUS` / `UNRESOLVED` (or
+similar) to stop conflating "verified identifier" with "URL merely
+responded" under the same `OK` label. This is a more disruptive change
+than adding `evidence` was — it touches the CLI's terminal output
+directly — so it deserves its own design pass rather than piggybacking on
+this work.
 
 ### Optional: `references/sidecar-schema.md`
 

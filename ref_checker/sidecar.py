@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from .extract import Reference
-from .results import LookupResult
+from .model import EvidenceLevel
+from .results import STRONG_MATCH_THRESHOLD, LookupResult
 
 SIDECAR_SCHEMA_VERSION = 4
 _OUTDATED_SCHEMA_VERSIONS = {1, 2, 3}
@@ -34,7 +35,7 @@ def status_label(result: LookupResult, min_match: float) -> str:
     if result.is_liveness or result.id_confirmed:
         return "OK"
     score = result.display_score if result.display_score is not None else 0.0
-    if score >= 0.90:
+    if score >= STRONG_MATCH_THRESHOLD:
         return "OK"
     if score >= min_match:
         return "CLOSEST"
@@ -44,6 +45,7 @@ def status_label(result: LookupResult, min_match: float) -> str:
 def result_to_dict(result: LookupResult, min_match: float) -> dict:
     return {
         "status": status_label(result, min_match),
+        "evidence": result.evidence,
         "display_score": result.display_score,
         "best_source": result.best_source,
         "id_confirmed": result.id_confirmed,
@@ -63,6 +65,7 @@ def result_to_dict(result: LookupResult, min_match: float) -> dict:
 
 
 def result_from_dict(d: dict) -> LookupResult:
+    evidence_raw = d.get("evidence")
     return LookupResult(
         best_summary=d.get("best_summary"),
         display_score=d.get("display_score"),
@@ -79,6 +82,7 @@ def result_from_dict(d: dict) -> LookupResult:
         exhausted_sources=d.get("exhausted_sources") or [],
         url_liveness_check=d.get("url_liveness_check", False),
         per_source=d.get("per_source") or {},
+        evidence=EvidenceLevel(evidence_raw) if evidence_raw else None,
     )
 
 
