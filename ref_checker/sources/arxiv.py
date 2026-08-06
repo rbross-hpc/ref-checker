@@ -5,11 +5,10 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Any
 
-import requests
-
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit
+from .base import SourceContext
 
 SOURCE_NAME = "arxiv"
 DEFAULT_DELAY = 3.0
@@ -20,10 +19,9 @@ _NS = {"atom": "http://www.w3.org/2005/Atom"}
 _USER_AGENT = "ref-checker/0.1"
 
 
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({"User-Agent": _USER_AGENT})
-    return s
+def build_context() -> SourceContext:
+    """Build the arXiv :class:`SourceContext` once per run. User-Agent only."""
+    return SourceContext(session=build_session(_USER_AGENT))
 
 
 def _parse_entry(entry: ET.Element) -> dict[str, Any]:
@@ -54,17 +52,19 @@ def _parse_entry(entry: ET.Element) -> dict[str, Any]:
     }
 
 
-def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]:
     doi = doi.strip()
     m = re.search(r"arXiv\.(\d{4}\.\d{4,5})", doi, re.IGNORECASE)
     if m:
-        return get_by_arxiv_id(m.group(1))
+        return get_by_arxiv_id(m.group(1), ctx)
     return None, None
 
 
-def get_by_arxiv_id(arxiv_id: str) -> tuple[dict | None, float | None]:
+def get_by_arxiv_id(
+    arxiv_id: str, ctx: SourceContext
+) -> tuple[dict | None, float | None]:
     bare = re.sub(r"v\d+$", "", arxiv_id.strip())
-    resp = _session().get(
+    resp = ctx.session.get(
         _BASE,
         params={"id_list": bare, "max_results": 1},
         timeout=30,
@@ -82,10 +82,10 @@ def get_by_arxiv_id(arxiv_id: str) -> tuple[dict | None, float | None]:
 
 
 def search_by_title(
-    title: str,
+    title: str, ctx: SourceContext,
 ) -> tuple[dict | None, float | None]:
     search_query = f'ti:"{title}"'
-    resp = _session().get(
+    resp = ctx.session.get(
         _BASE,
         params={"search_query": search_query, "max_results": 5},
         timeout=30,

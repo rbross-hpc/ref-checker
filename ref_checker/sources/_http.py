@@ -5,7 +5,26 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
+import requests
+
 from ..errors import RateLimited
+
+
+def build_session(
+    user_agent: str, params: dict[str, Any] | None = None
+) -> requests.Session:
+    """Build a ``requests.Session`` with a fixed User-Agent and, optionally,
+    session-level query params (e.g. a polite-pool ``mailto``) that
+    ``requests`` automatically merges into every per-call ``params=`` dict.
+
+    Replaces the near-duplicated ``_session()`` helpers that used to live in
+    each source module.
+    """
+    s = requests.Session()
+    s.headers.update({"User-Agent": user_agent})
+    if params:
+        s.params = dict(params)
+    return s
 
 
 def parse_retry_after(resp: Any) -> float | None:

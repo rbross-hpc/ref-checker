@@ -84,17 +84,20 @@ ref-checker/
         └── url.py                 # generic URL liveness fallback
 ```
 
-## Planned work: shared `SourceContext` (session + credentials)
+## Shared `SourceContext` (session + credentials)
 
-Backlog item: source modules currently build a brand-new `requests.Session`
-on every single HTTP call (`openalex.py`, `crossref.py`, `osti.py`,
-`dblp.py`, `arxiv.py` each have a private `_session()` helper called fresh
-per request), or use no session at all (`semanticscholar.py`, `github.py`,
-`url.py` call bare `requests.get`/`requests.head`). No connection pooling
-benefit is realized anywhere. See `docs/source-adapter-contract.md`'s
-"Explicitly out of scope" section (to be updated once this lands) and the
-external assessment at `../20260806-ref-checker-assessment.md` (§6, "HTTP
-behavior is shared conceptually, but not structurally").
+Source modules used to build a brand-new `requests.Session` on every
+single HTTP call (`openalex.py`, `crossref.py`, `osti.py`, `dblp.py`,
+`arxiv.py` each had a private `_session()` helper called fresh per
+request), or use no session at all (`semanticscholar.py` called bare
+`requests.get`). No connection-pooling benefit was realized anywhere. See
+`docs/source-adapter-contract.md`'s "Shared SourceContext" section for the
+landed shape, and the external assessment at
+`../20260806-ref-checker-assessment.md` (§6, "HTTP behavior is shared
+conceptually, but not structurally").
+
+**Status: Part 1 done** (the 6 scholarly sources). **Part 2 pending**
+(the 2 liveness sources, `github.py`/`url.py` — see `BACKLOG.md`).
 
 **Scope decision**: `SourceContext` holds `session` + `credentials` only.
 Rate limiting (`_RateLimiter`) and retry (`_retry`) stay exactly where they
@@ -114,96 +117,67 @@ source function they're calling.
 
 This work is split into two parts:
 
-### Part 1 — infrastructure + the 6 scholarly sources
+### Part 1 — infrastructure + the 6 scholarly sources (done)
 
-Scope: `openalex.py`, `crossref.py`, `osti.py`, `dblp.py`, `arxiv.py`
-(all 5 already have a `_session()` to replace) plus `semanticscholar.py`
-(no session today, but same `get_by_doi`/`get_by_arxiv_id`/
-`search_by_title` function shape as the other 5, and already has a
-`credentials`-shaped concept — `_headers()` reading
-`SEMANTICSCHOLAR_API_KEY` — that maps directly onto
-`SourceContext.credentials`). Liveness sources (`github.py`, `url.py`)
-are deferred to Part 2 (different function shape: `check_url`, not
-`get_by_doi`/`search_by_title`; no unit tests exercise `check_url`
-directly today, only stubbed at the engine boundary; gaining a session
-for the first time is a different flavor of change than "inject what
-already exists").
+Scope: `openalex.py`, `crossref.py`, `osti.py`, `dblp.py`, `arxiv.py`, and
+`semanticscholar.py`. Landed:
 
-Concrete steps:
+- `sources/base.py:SourceContext` — dataclass (`session:
+  requests.Session`, `credentials: dict[str, str]`), next to the
+  `ScholarlySource`/`LivenessSource` Protocols.
+- `sources/_http.py:build_session(user_agent, params=None)` — replaced the
+  5 near-duplicated `_session()` functions.
+- `sources/registry.py:build_all_contexts()` — builds all 6 contexts once.
+  OpenAlex/CrossRef set `session.params = {"mailto": ...}` when
+  `OPENALEX_MAILTO` is set (`requests.Session.params` auto-merges with
+  per-call params — this deleted both modules' `_polite_params()`
+  helpers); OSTI/DBLP/arXiv are User-Agent only; Semantic Scholar reads
+  `SEMANTICSCHOLAR_API_KEY` once into `credentials` instead of per-call
+  via the old `_headers()`.
+- Contexts threaded through the call chain: `runner.py:check_references()`
+  builds `contexts: dict[str, SourceContext]` once and passes it to
+  `engine.py:lookup_reference(..., contexts=contexts)`; `call()` looks up
+  (or lazily builds, when no run-scoped dict was supplied) the context per
+  source and passes it as the function's final arg.
+  `cli/main.py:run_lookup()` builds one throwaway context per invocation.
+- All 6 modules' public functions gained a mandatory trailing
+  `ctx: SourceContext` parameter; dead `_session()`/`_headers()`/
+  `_polite_params()`/`_mailto()` helpers removed.
+- Test rewrites: `tests/test_rate_limit.py` (`TestPoliteMailto` rewritten
+  to assert on `build_context()`'s session params directly, since mailto
+  is now set once at context-build time rather than per-call;
+  `Test429RaisesRateLimited`/`TestSemanticScholar403Hint` inject an
+  explicit `SourceContext`), `tests/test_osti.py` (`make_session` fixture
+  returns a bare session; call sites pass `_ctx(session)`),
+  `tests/test_dblp.py` (`TestMirrorFailover`, same pattern).
+  `tests/test_engine.py`/`test_runner.py` needed their `stub_sources`-based
+  per-test lambda/def overrides updated to accept the new trailing `ctx`
+  arg (their `stub_sources` fixture default itself needed no changes,
+  being `lambda *a, **kw: ...`).
+- New regression coverage: `TestSourceContextReuse` in `test_engine.py`
+  (same context object reused across two calls to the same source within
+  one `lookup_reference()`, and across separate `lookup_reference()` calls
+  sharing one `contexts` dict) and `test_same_session_reused_across_references_in_one_run`
+  in `test_runner.py` (proves `check_references()` end-to-end session
+  reuse — the actual point of this change).
+- Docs: `docs/source-adapter-contract.md` gained a "Shared SourceContext"
+  section; `docs/lookup-engine.md`'s concurrency section notes session
+  reuse; `CHANGELOG.md` entry added. Semantic Scholar's "drop key on 403,
+  retry unauthenticated" backlog item is now easier since
+  `ctx.credentials` is a natural place to mutate a session-scoped "key is
+  bad" flag (not implemented yet, just noting the dependency is in place).
 
-1. `sources/base.py`: add `SourceContext` dataclass (`session:
-   requests.Session`, `credentials: dict[str, str]`), next to the
-   `ScholarlySource`/`LivenessSource` Protocols already there.
-2. `sources/_http.py`: add `build_session(user_agent, params=None) ->
-   requests.Session`, replacing the 5 near-duplicated `_session()`
-   functions in `openalex.py`/`crossref.py`/`osti.py`/`dblp.py`/`arxiv.py`.
-3. A context-construction helper (likely `sources/registry.py`) builds all
-   6 contexts once:
-   - OpenAlex/CrossRef: `User-Agent` + `session.params = {"mailto": ...}`
-     if `OPENALEX_MAILTO` is set (`requests.Session.params` auto-merges
-     with per-call params — this **deletes** both modules' duplicated
-     `_polite_params()` helpers).
-   - OSTI: `User-Agent` only (uses `OPENALEX_MAILTO` in its UA string
-     today too — preserved as-is).
-   - DBLP, arXiv: `User-Agent` only.
-   - Semantic Scholar: session built via `build_session()` (new — it has
-     no session today); `credentials={"SEMANTICSCHOLAR_API_KEY": ...}` if
-     set, read once instead of per-call via `_headers()`.
-4. Thread contexts through the call chain: `runner.py:check_references()`
-   builds `contexts: dict[str, SourceContext]` once, passes to
-   `engine.py:lookup_reference(..., contexts=contexts)`; `call()`/
-   `call_liveness()` look up `contexts[src.SOURCE_NAME]` and pass it as
-   the final arg to the source function. `cli/main.py:run_lookup()`
-   (single-shot `ref-checker lookup <source>`) builds one throwaway
-   context for just that source before dispatching.
-5. Signature changes (6 modules): every public function gains a mandatory
-   trailing `ctx: SourceContext` parameter — `get_by_doi(doi, ctx)`,
-   `get_by_arxiv_id(arxiv_id, ctx)`, `search_by_title(title, ctx)`.
-   Remove now-dead `_session()`/`_headers()`/`_polite_params()`/
-   `_mailto()` helpers (keep `_normalize_doi` etc. — those aren't
-   session-related).
-6. Test rewrites (mechanical, ~35-40 call sites total):
-   - `tests/test_rate_limit.py`: ~19 sites across `TestPoliteMailto` (7),
-     `Test429RaisesRateLimited` (10: openalex×2, crossref×2, osti×2,
-     semanticscholar×2, dblp×1, arxiv×2), `TestSemanticScholar403Hint`
-     (2). Each `monkeypatch.setattr(src, "_session", lambda: session)` (or
-     `monkeypatch.setattr(_rq, "get", _fake_get)` for semanticscholar)
-     becomes an explicit `ctx = SourceContext(session=session,
-     credentials={...})` passed into the call.
-   - `tests/test_osti.py`: `make_session` fixture reworked to build/return
-     a `SourceContext`; ~15 call sites in `TestGetByDoi`/`TestSearchByTitle`
-     gain `ctx=` argument.
-   - `tests/test_dblp.py`: `TestMirrorFailover` (2 tests), same pattern.
-   - `tests/test_engine.py`/`test_runner.py`/`test_show.py`: **no changes
-     needed** — their `stub_sources` fixture monkeypatches whole functions
-     with `lambda *a, **kw: (...)`, signature-agnostic, absorbs the new
-     parameter automatically.
-   - `tests/test_sources.py`: unaffected (tests `_summarize` etc. directly,
-     no session involved).
-7. New regression coverage: assert OpenAlex/CrossRef sessions carry
-   `mailto` when set (now via session-level params, not per-call);  assert
-   one `SourceContext`'s session is reused across two calls to the same
-   source within one `check_references()` run (proves reuse, not
-   reconstruction — the actual point of this change).
-8. Docs: update `docs/source-adapter-contract.md` (remove "Explicitly out
-   of scope: Shared SourceContext" bullet, add a section on the final
-   shape) and `docs/lookup-engine.md` ("Rate limiting and retries" section,
-   note session reuse). `CHANGELOG.md` entry. Note in `BACKLOG.md` that
-   Semantic Scholar's "drop key on 403, retry unauthenticated" backlog item
-   is now easier since `ctx.credentials` is a natural place to mutate a
-   session-scoped "key is bad" flag (not implementing that now, just
-   noting the dependency is now in place).
+### Part 2 — extend to liveness sources (`github.py`, `url.py`) (pending)
 
-### Part 2 — extend to liveness sources (`github.py`, `url.py`)
-
-Follow-up, filed to `BACKLOG.md`. Extends the same `SourceContext` to
+Filed to `BACKLOG.md`. Extends the same `SourceContext` to
 `check_url(urls, ctx)` on both liveness sources, giving them connection
 pooling for the first time (currently bare `requests.head` per call, no
 session at all). Smaller scope than Part 1: 2 modules, different function
 shape (`check_url` returns a 3-tuple including dead-URL list, unlike the
 2-tuple scholarly functions), no existing direct unit tests to rewrite
 (only engine-level stubs, which are signature-agnostic and need no
-changes).
+changes). `engine.py:call_liveness()` will need the same lazy-or-shared
+context lookup that `call()` already has.
 
 ## Testing
 

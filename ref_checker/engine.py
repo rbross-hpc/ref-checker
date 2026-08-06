@@ -12,6 +12,7 @@ from .results import LookupResult, _Stats
 from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration, _retry
 from .sources import arxiv, github, url as url_source
 from .sources.base import FN_BY_KIND as _FN_BY_KIND
+from .sources.base import SourceContext
 from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
 
@@ -26,15 +27,23 @@ def lookup_reference(
     shutdown: _Shutdown | None = None,
     sources_to_query: set[str] | None = None,
     prior_result: LookupResult | None = None,
+    contexts: dict[str, SourceContext] | None = None,
 ) -> LookupResult:
     """Run multi-source lookup for a single reference.
 
     When *prior_result* is supplied its per_source entries seed the returned
     result; only sources named in *sources_to_query* are actually queried,
     and everything else is preserved from prior_result.
+
+    *contexts* maps scholarly source name -> SourceContext (session +
+    credentials), built once per ``check_references()`` run by
+    ``runner.py`` and threaded down here so every reference in the run
+    reuses the same session per source. When None (e.g. some direct-call
+    test paths), a fresh context is built lazily per source on first use.
     """
     rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _DEFAULT_DELAYS)
     health = health if health is not None else SourceHealth(stats=stats)
+    contexts = contexts if contexts is not None else {}
 
     if prior_result is not None:
         result = LookupResult(
@@ -54,6 +63,14 @@ def lookup_reference(
             return True
         return src_name in sources_to_query
 
+    def _ctx_for(src) -> SourceContext:
+        src_name = src.SOURCE_NAME
+        ctx = contexts.get(src_name)
+        if ctx is None:
+            ctx = src.build_context()
+            contexts[src_name] = ctx
+        return ctx
+
     def call(src, queried_by: str, *args) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
@@ -64,6 +81,7 @@ def lookup_reference(
         if kind not in src.SUPPORTED_QUERY_KINDS:
             return None, None
         fn = getattr(src, _FN_BY_KIND[kind])
+        ctx = _ctx_for(src)
         rl.wait(src_name)
         # Re-check after rl.wait — another worker may have disabled the source
         # while we were waiting on the per-source rate limiter.
@@ -83,7 +101,7 @@ def lookup_reference(
             errored["flag"] = True
 
         out, cause, retry_after = _retry(
-            lambda: fn(*args),
+            lambda: fn(*args, ctx),
             stats=stats,
             source=src_name,
             mode=queried_by,

@@ -86,8 +86,8 @@ def stub_sources(monkeypatch):
 
 class TestPerSource:
     def test_records_hit_id_and_not_found(self, stub_sources):
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
-        stub_sources["crossref"].get_by_doi = lambda doi: (None, None)
+        stub_sources["openalex"].get_by_doi = lambda doi, ctx: (_summary(doi=doi), 1.0)
+        stub_sources["crossref"].get_by_doi = lambda doi, ctx: (None, None)
 
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
@@ -150,7 +150,7 @@ class TestEvidenceLevel:
     def test_doi_hit_is_confirmed_identifier(self, stub_sources):
         from ref_checker.model import EvidenceLevel
 
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
+        stub_sources["openalex"].get_by_doi = lambda doi, ctx: (_summary(doi=doi), 1.0)
 
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
@@ -175,7 +175,7 @@ class TestEvidenceLevel:
     def test_strong_title_match_is_strong_metadata_match(self, stub_sources):
         from ref_checker.model import EvidenceLevel
 
-        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.95)
+        stub_sources["openalex"].search_by_title = lambda title, ctx: (_summary(doi=None), 0.95)
 
         ref = _ref(title="A Paper")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
@@ -185,7 +185,7 @@ class TestEvidenceLevel:
     def test_weak_title_match_is_weak_or_ambiguous(self, stub_sources):
         from ref_checker.model import EvidenceLevel
 
-        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.82)
+        stub_sources["openalex"].search_by_title = lambda title, ctx: (_summary(doi=None), 0.82)
 
         ref = _ref(title="A Paper")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
@@ -247,7 +247,7 @@ class TestSourcesToQuery:
         prior.per_source["openalex"] = {"status": "not_found", "queried_by": ["title"],
                                         "score": None, "summary": None}
 
-        stub_sources["crossref"].search_by_title = lambda t: (_summary(title=t), 0.95)
+        stub_sources["crossref"].search_by_title = lambda t, ctx: (_summary(title=t), 0.95)
 
         ref = _ref(title="A Paper")
         result = engine_mod.lookup_reference(
@@ -257,3 +257,73 @@ class TestSourcesToQuery:
         )
         assert result.per_source["openalex"]["status"] == "not_found"
         assert result.per_source["crossref"]["status"] == "hit_title"
+
+
+# --------------------------------------------------------------------------
+# SourceContext reuse (session pooling)
+# --------------------------------------------------------------------------
+
+
+class TestSourceContextReuse:
+    def test_same_context_object_passed_across_calls_in_one_run(self, stub_sources):
+        """A single lookup_reference() call may query the same source more
+        than once (e.g. DOI then title fallback) — it must reuse one ctx,
+        not build a fresh one per call.
+        """
+        seen_ctxs = []
+
+        def _record(doi, ctx):
+            seen_ctxs.append(ctx)
+            return None, None
+
+        stub_sources["openalex"].get_by_doi = _record
+        stub_sources["openalex"].search_by_title = _record
+
+        ref = _ref(doi="10.1/test", title="A Paper")
+        engine_mod.lookup_reference(ref, min_match=0.80)
+
+        assert len(seen_ctxs) == 2
+        assert seen_ctxs[0] is seen_ctxs[1]
+
+    def test_contexts_dict_reused_across_references_in_one_run(self, stub_sources):
+        """This is what runner.py relies on: build contexts once, pass the
+        same dict into lookup_reference() for every reference in the run,
+        so every reference reuses the same per-source session.
+        """
+        seen_ctxs = []
+
+        def _record(doi, ctx):
+            seen_ctxs.append(ctx)
+            return None, None
+
+        stub_sources["openalex"].get_by_doi = _record
+
+        contexts: dict = {}
+        ref1 = _ref(index=1, doi="10.1/a")
+        ref2 = _ref(index=2, doi="10.1/b")
+        engine_mod.lookup_reference(ref1, min_match=0.80, contexts=contexts)
+        engine_mod.lookup_reference(ref2, min_match=0.80, contexts=contexts)
+
+        assert len(seen_ctxs) == 2
+        assert seen_ctxs[0] is seen_ctxs[1]
+
+    def test_without_shared_contexts_dict_each_call_builds_its_own(self, stub_sources):
+        """Direct-call test paths that don't pass contexts= (contexts=None,
+        the default) still work — but don't get cross-call reuse, since
+        each lookup_reference() call starts its own empty contexts dict.
+        """
+        seen_ctxs = []
+
+        def _record(doi, ctx):
+            seen_ctxs.append(ctx)
+            return None, None
+
+        stub_sources["openalex"].get_by_doi = _record
+
+        ref1 = _ref(index=1, doi="10.1/a")
+        ref2 = _ref(index=2, doi="10.1/b")
+        engine_mod.lookup_reference(ref1, min_match=0.80)
+        engine_mod.lookup_reference(ref2, min_match=0.80)
+
+        assert len(seen_ctxs) == 2
+        assert seen_ctxs[0] is not seen_ctxs[1]

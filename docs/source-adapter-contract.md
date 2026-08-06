@@ -31,6 +31,11 @@ DEFAULT_DELAY = 2.0
 SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.TITLE})
 ```
 
+Every source module (scholarly and liveness alike) also implements
+`build_context() -> SourceContext` and takes a mandatory trailing
+`ctx: SourceContext` parameter on every lookup function. See
+"Shared `SourceContext`" below.
+
 `SUPPORTED_QUERY_KINDS` declares which of `get_by_doi` / `get_by_arxiv_id`
 / `search_by_title` the module implements a corresponding function for —
 not every scholarly source supports every kind (DBLP is title-only;
@@ -82,12 +87,42 @@ module:
   exists has its kind declared — guards drift in either direction.
 - `registry.DEFAULT_DELAYS[name]` matches the module's own `DEFAULT_DELAY`.
 
+## Shared `SourceContext`
+
+Every scholarly source (`openalex`, `crossref`, `osti`, `dblp`,
+`semanticscholar`, `arxiv`) implements:
+
+```python
+def build_context() -> SourceContext: ...
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]: ...
+```
+
+`SourceContext` (`sources/base.py`) is a small dataclass holding only
+`session: requests.Session` and `credentials: dict[str, str]`. It
+deliberately does **not** include rate limiting or retry — those stay in
+`runtime.py`/`engine.py`, applied *around* the source call, keeping "how to
+talk to this source" (the context) separate from "how often/how
+resiliently to talk to any source" (the engine).
+
+`sources/registry.py:build_all_contexts()` builds one context per
+scholarly source. `runner.py:check_references()` calls this **once per
+run** and threads the resulting `contexts` dict through
+`engine.py:lookup_reference()` for every reference in that run — so every
+reference reuses the same underlying session (and thus connection pool)
+per source, rather than each HTTP call opening a fresh one. This is the
+main practical benefit: previously every `_session()` call built a brand
+new `requests.Session`.
+
+`cli/main.py`'s single-shot `ref-checker lookup <source>` subcommand
+builds one throwaway context immediately before dispatching, since there's
+only one call to make.
+
+Liveness sources (`github`, `url`) don't have `SourceContext` support yet
+— see `BACKLOG.md`'s "Extend SourceContext (session pooling) to liveness
+sources" for that follow-up.
+
 ## Explicitly out of scope
 
-- **Shared `SourceContext`** (pooled `requests.Session`, credentials,
-  auth-mode handling) is a separate, larger piece of work — see
-  `BACKLOG.md`. Each source module still constructs its own session (or,
-  for `semanticscholar.py`/`url.py`, no session at all) per call.
 - **Static type checking** (mypy/pyright) is not yet in CI — see
   `BACKLOG.md` — so the Protocols here serve documentation and one runtime
   test, not a static guarantee.

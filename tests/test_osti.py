@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ref_checker.sources import osti
+from ref_checker.sources.base import SourceContext
 from ref_checker.sources.osti import (
     _extract_url,
     _extract_year,
@@ -44,12 +45,15 @@ class _FakeSession:
 
 
 @pytest.fixture
-def make_session(monkeypatch):
+def make_session():
     def _factory(status_code, payload):
         session = _FakeSession(_FakeResponse(status_code, payload))
-        monkeypatch.setattr(osti, "_session", lambda: session)
         return session
     return _factory
+
+
+def _ctx(session) -> SourceContext:
+    return SourceContext(session=session)
 
 
 # --------------------------------------------------------------------------
@@ -263,45 +267,45 @@ class TestGetByDoi:
             "links": [{"rel": "citation", "href": "https://osti.gov/biblio/42"}],
         }]
         session = make_session(200, payload)
-        summary, sim = osti.get_by_doi("10.2172/42")
+        summary, sim = osti.get_by_doi("10.2172/42", _ctx(session))
         assert sim == 1.0
         assert summary["external_id"] == "42"
         assert session.calls[0][1] == {"doi": "10.2172/42"}
 
     def test_doi_normalized_before_query(self, make_session):
         session = make_session(200, [])
-        osti.get_by_doi("https://doi.org/10.2172/ABC")
+        osti.get_by_doi("https://doi.org/10.2172/ABC", _ctx(session))
         assert session.calls[0][1] == {"doi": "10.2172/abc"}
 
     def test_empty_doi_returns_none(self, make_session):
-        make_session(200, [])
-        assert osti.get_by_doi("") == (None, None)
+        session = make_session(200, [])
+        assert osti.get_by_doi("", _ctx(session)) == (None, None)
 
     def test_none_doi_returns_none(self, make_session):
-        make_session(200, [])
-        assert osti.get_by_doi(None) == (None, None)
+        session = make_session(200, [])
+        assert osti.get_by_doi(None, _ctx(session)) == (None, None)
 
     def test_404_returns_none(self, make_session):
-        make_session(404, None)
-        assert osti.get_by_doi("10.2172/42") == (None, None)
+        session = make_session(404, None)
+        assert osti.get_by_doi("10.2172/42", _ctx(session)) == (None, None)
 
     def test_410_returns_none(self, make_session):
-        make_session(410, None)
-        assert osti.get_by_doi("10.2172/42") == (None, None)
+        session = make_session(410, None)
+        assert osti.get_by_doi("10.2172/42", _ctx(session)) == (None, None)
 
     def test_empty_list_returns_none(self, make_session):
-        make_session(200, [])
-        assert osti.get_by_doi("10.2172/42") == (None, None)
+        session = make_session(200, [])
+        assert osti.get_by_doi("10.2172/42", _ctx(session)) == (None, None)
 
     def test_non_list_returns_none(self, make_session):
-        make_session(200, {"error": "bad"})
-        assert osti.get_by_doi("10.2172/42") == (None, None)
+        session = make_session(200, {"error": "bad"})
+        assert osti.get_by_doi("10.2172/42", _ctx(session)) == (None, None)
 
     def test_500_raises(self, make_session):
         from requests import HTTPError
-        make_session(500, None)
+        session = make_session(500, None)
         with pytest.raises(HTTPError):
-            osti.get_by_doi("10.2172/42")
+            osti.get_by_doi("10.2172/42", _ctx(session))
 
 
 # --------------------------------------------------------------------------
@@ -319,25 +323,25 @@ class TestSearchByTitle:
             {"osti_id": 3, "title": "A Different Report",
              "publication_date": "2022", "authors": [], "links": []},
         ]
-        make_session(200, payload)
-        summary, sim = osti.search_by_title("A DOE Report on X")
+        session = make_session(200, payload)
+        summary, sim = osti.search_by_title("A DOE Report on X", _ctx(session))
         assert summary["external_id"] == "2"
         assert sim == pytest.approx(1.0)
 
     def test_empty_list_returns_none(self, make_session):
-        make_session(200, [])
-        assert osti.search_by_title("anything") == (None, None)
+        session = make_session(200, [])
+        assert osti.search_by_title("anything", _ctx(session)) == (None, None)
 
     def test_non_list_returns_none(self, make_session):
-        make_session(200, {"error": "bad"})
-        assert osti.search_by_title("anything") == (None, None)
+        session = make_session(200, {"error": "bad"})
+        assert osti.search_by_title("anything", _ctx(session)) == (None, None)
 
     def test_404_returns_none(self, make_session):
-        make_session(404, None)
-        assert osti.search_by_title("anything") == (None, None)
+        session = make_session(404, None)
+        assert osti.search_by_title("anything", _ctx(session)) == (None, None)
 
     def test_500_raises(self, make_session):
         from requests import HTTPError
-        make_session(500, None)
+        session = make_session(500, None)
         with pytest.raises(HTTPError):
-            osti.search_by_title("anything")
+            osti.search_by_title("anything", _ctx(session))

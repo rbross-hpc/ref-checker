@@ -12,6 +12,7 @@ import pytest
 from ref_checker.errors import RateLimited
 from ref_checker.sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
 from ref_checker.sources._http import parse_retry_after, raise_for_rate_limit
+from ref_checker.sources.base import SourceContext
 
 
 # --------------------------------------------------------------------------
@@ -36,14 +37,26 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    def __init__(self, response: _FakeResponse):
+    """Mimics ``requests.Session``'s auto-merge of session-level ``params``
+    (set once, e.g. by ``build_context()``) into every per-call ``params=``.
+    """
+
+    def __init__(self, response: _FakeResponse, params: dict | None = None):
         self._response = response
         self.calls: list[tuple[str, dict]] = []
         self.headers: dict[str, str] = {}
+        self.params: dict = dict(params or {})
 
-    def get(self, url, params=None, timeout=None):
-        self.calls.append((url, dict(params) if params else {}))
+    def get(self, url, params=None, headers=None, timeout=None):
+        merged = dict(self.params)
+        if params:
+            merged.update(params)
+        self.calls.append((url, merged))
         return self._response
+
+
+def _ctx(session, credentials=None) -> SourceContext:
+    return SourceContext(session=session, credentials=credentials or {})
 
 
 # --------------------------------------------------------------------------
@@ -130,61 +143,58 @@ class TestRaiseForRateLimit:
 
 
 class TestPoliteMailto:
+    """``mailto`` is now set once at context-build time as a session-level
+    param (``build_session(..., params={"mailto": ...})``), not re-added on
+    every call — so these tests exercise ``build_context()`` directly and
+    confirm ``requests`` auto-merges the session-level param into a real
+    per-call request.
+    """
+
     def test_openalex_get_by_doi_sends_mailto_when_set(self, monkeypatch):
+        import requests as _rq
+
         monkeypatch.setenv("OPENALEX_MAILTO", "test@example.org")
-        session = _FakeSession(_FakeResponse(200, {
-            "display_name": "T", "publication_year": 2020,
-            "authorships": [], "primary_location": {}, "doi": None, "id": "x",
-        }))
-        monkeypatch.setattr(openalex, "_session", lambda: session)
-        openalex.get_by_doi("10.1/x")
-        assert session.calls
-        _, params = session.calls[0]
-        assert params.get("mailto") == "test@example.org"
+        ctx = openalex.build_context()
+        assert ctx.session.params.get("mailto") == "test@example.org"
+        req = ctx.session.prepare_request(
+            _rq.Request("GET", "https://api.openalex.org/works/doi:10.1/x")
+        )
+        assert req.url is not None
+        assert "mailto=test%40example.org" in req.url
 
     def test_openalex_get_by_doi_no_mailto_when_unset(self, monkeypatch):
         monkeypatch.delenv("OPENALEX_MAILTO", raising=False)
-        session = _FakeSession(_FakeResponse(200, {
-            "display_name": "T", "publication_year": 2020,
-            "authorships": [], "primary_location": {}, "doi": None, "id": "x",
-        }))
-        monkeypatch.setattr(openalex, "_session", lambda: session)
-        openalex.get_by_doi("10.1/x")
-        _, params = session.calls[0]
-        assert "mailto" not in params
+        ctx = openalex.build_context()
+        assert "mailto" not in ctx.session.params
 
     def test_openalex_search_by_title_sends_mailto(self, monkeypatch):
+        import requests as _rq
+
         monkeypatch.setenv("OPENALEX_MAILTO", "test@example.org")
-        session = _FakeSession(_FakeResponse(200, {"results": []}))
-        monkeypatch.setattr(openalex, "_session", lambda: session)
-        openalex.search_by_title("some title")
-        _, params = session.calls[0]
-        assert params.get("mailto") == "test@example.org"
-        assert params.get("search") == "some title"
+        ctx = openalex.build_context()
+        req = ctx.session.prepare_request(
+            _rq.Request(
+                "GET", "https://api.openalex.org/works", params={"search": "some title"}
+            )
+        )
+        assert req.url is not None
+        assert "mailto=test%40example.org" in req.url
+        assert "search=some" in req.url
 
     def test_crossref_get_by_doi_sends_mailto(self, monkeypatch):
         monkeypatch.setenv("OPENALEX_MAILTO", "test@example.org")
-        session = _FakeSession(_FakeResponse(200, {"message": {}}))
-        monkeypatch.setattr(crossref, "_session", lambda: session)
-        crossref.get_by_doi("10.1/x")
-        _, params = session.calls[0]
-        assert params.get("mailto") == "test@example.org"
+        ctx = crossref.build_context()
+        assert ctx.session.params.get("mailto") == "test@example.org"
 
     def test_crossref_search_by_title_sends_mailto(self, monkeypatch):
         monkeypatch.setenv("OPENALEX_MAILTO", "test@example.org")
-        session = _FakeSession(_FakeResponse(200, {"message": {"items": []}}))
-        monkeypatch.setattr(crossref, "_session", lambda: session)
-        crossref.search_by_title("some title")
-        _, params = session.calls[0]
-        assert params.get("mailto") == "test@example.org"
+        ctx = crossref.build_context()
+        assert ctx.session.params.get("mailto") == "test@example.org"
 
     def test_crossref_no_mailto_when_unset(self, monkeypatch):
         monkeypatch.delenv("OPENALEX_MAILTO", raising=False)
-        session = _FakeSession(_FakeResponse(200, {"message": {}}))
-        monkeypatch.setattr(crossref, "_session", lambda: session)
-        crossref.get_by_doi("10.1/x")
-        _, params = session.calls[0]
-        assert "mailto" not in params
+        ctx = crossref.build_context()
+        assert "mailto" not in ctx.session.params
 
 
 # --------------------------------------------------------------------------
@@ -193,88 +203,67 @@ class TestPoliteMailto:
 
 
 class Test429RaisesRateLimited:
-    def test_openalex_get_by_doi(self, monkeypatch):
+    def test_openalex_get_by_doi(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "4"}))
-        monkeypatch.setattr(openalex, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            openalex.get_by_doi("10.1/x")
+            openalex.get_by_doi("10.1/x", _ctx(session))
         assert ei.value.retry_after == pytest.approx(4.0)
 
-    def test_openalex_search_by_title(self, monkeypatch):
+    def test_openalex_search_by_title(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "2"}))
-        monkeypatch.setattr(openalex, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            openalex.search_by_title("t")
+            openalex.search_by_title("t", _ctx(session))
         assert ei.value.retry_after == pytest.approx(2.0)
 
-    def test_crossref_get_by_doi(self, monkeypatch):
+    def test_crossref_get_by_doi(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "3"}))
-        monkeypatch.setattr(crossref, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            crossref.get_by_doi("10.1/x")
+            crossref.get_by_doi("10.1/x", _ctx(session))
         assert ei.value.retry_after == pytest.approx(3.0)
 
-    def test_crossref_search_by_title(self, monkeypatch):
+    def test_crossref_search_by_title(self):
         session = _FakeSession(_FakeResponse(429, headers={}))
-        monkeypatch.setattr(crossref, "_session", lambda: session)
         with pytest.raises(RateLimited):
-            crossref.search_by_title("t")
+            crossref.search_by_title("t", _ctx(session))
 
-    def test_osti_get_by_doi(self, monkeypatch):
+    def test_osti_get_by_doi(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "5"}))
-        monkeypatch.setattr(osti, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            osti.get_by_doi("10.1/x")
+            osti.get_by_doi("10.1/x", _ctx(session))
         assert ei.value.retry_after == pytest.approx(5.0)
 
-    def test_osti_search_by_title(self, monkeypatch):
+    def test_osti_search_by_title(self):
         session = _FakeSession(_FakeResponse(429))
-        monkeypatch.setattr(osti, "_session", lambda: session)
         with pytest.raises(RateLimited):
-            osti.search_by_title("t")
+            osti.search_by_title("t", _ctx(session))
 
-    def test_semanticscholar_get_by_doi(self, monkeypatch):
-        resp = _FakeResponse(429, headers={"Retry-After": "6"})
-
-        def _fake_get(url, params=None, headers=None, timeout=None):
-            return resp
-
-        import requests as _rq
-        monkeypatch.setattr(_rq, "get", _fake_get)
+    def test_semanticscholar_get_by_doi(self):
+        session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "6"}))
         with pytest.raises(RateLimited) as ei:
-            semanticscholar.get_by_doi("10.1/x")
+            semanticscholar.get_by_doi("10.1/x", _ctx(session))
         assert ei.value.retry_after == pytest.approx(6.0)
 
-    def test_semanticscholar_search_by_title(self, monkeypatch):
-        resp = _FakeResponse(429, headers={})
-
-        def _fake_get(url, params=None, headers=None, timeout=None):
-            return resp
-
-        import requests as _rq
-        monkeypatch.setattr(_rq, "get", _fake_get)
+    def test_semanticscholar_search_by_title(self):
+        session = _FakeSession(_FakeResponse(429, headers={}))
         with pytest.raises(RateLimited):
-            semanticscholar.search_by_title("t")
+            semanticscholar.search_by_title("t", _ctx(session))
 
-    def test_dblp_search_by_title(self, monkeypatch):
+    def test_dblp_search_by_title(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "7"}))
-        monkeypatch.setattr(dblp, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            dblp.search_by_title("t")
+            dblp.search_by_title("t", _ctx(session))
         assert ei.value.retry_after == pytest.approx(7.0)
 
-    def test_arxiv_get_by_arxiv_id(self, monkeypatch):
+    def test_arxiv_get_by_arxiv_id(self):
         session = _FakeSession(_FakeResponse(429, headers={"Retry-After": "8"}))
-        monkeypatch.setattr(arxiv, "_session", lambda: session)
         with pytest.raises(RateLimited) as ei:
-            arxiv.get_by_arxiv_id("2401.00001")
+            arxiv.get_by_arxiv_id("2401.00001", _ctx(session))
         assert ei.value.retry_after == pytest.approx(8.0)
 
-    def test_arxiv_search_by_title(self, monkeypatch):
+    def test_arxiv_search_by_title(self):
         session = _FakeSession(_FakeResponse(429))
-        monkeypatch.setattr(arxiv, "_session", lambda: session)
         with pytest.raises(RateLimited):
-            arxiv.search_by_title("t")
+            arxiv.search_by_title("t", _ctx(session))
 
 
 # --------------------------------------------------------------------------
@@ -283,32 +272,20 @@ class Test429RaisesRateLimited:
 
 
 class TestSemanticScholar403Hint:
-    def test_get_by_doi_403_includes_hint(self, monkeypatch):
-        resp = _FakeResponse(403, headers={})
-
-        def _fake_get(url, params=None, headers=None, timeout=None):
-            return resp
-
-        import requests as _rq
-        monkeypatch.setattr(_rq, "get", _fake_get)
+    def test_get_by_doi_403_includes_hint(self):
+        session = _FakeSession(_FakeResponse(403, headers={}))
         from requests import HTTPError
         with pytest.raises(HTTPError) as ei:
-            semanticscholar.get_by_doi("10.1/x")
+            semanticscholar.get_by_doi("10.1/x", _ctx(session))
         msg = str(ei.value)
         assert "403" in msg
         assert "SEMANTICSCHOLAR_API_KEY" in msg
 
-    def test_search_by_title_403_includes_hint(self, monkeypatch):
-        resp = _FakeResponse(403, headers={})
-
-        def _fake_get(url, params=None, headers=None, timeout=None):
-            return resp
-
-        import requests as _rq
-        monkeypatch.setattr(_rq, "get", _fake_get)
+    def test_search_by_title_403_includes_hint(self):
+        session = _FakeSession(_FakeResponse(403, headers={}))
         from requests import HTTPError
         with pytest.raises(HTTPError) as ei:
-            semanticscholar.search_by_title("t")
+            semanticscholar.search_by_title("t", _ctx(session))
         msg = str(ei.value)
         assert "403" in msg
         assert "SEMANTICSCHOLAR_API_KEY" in msg

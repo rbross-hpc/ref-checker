@@ -5,11 +5,10 @@ import os
 import re
 from typing import Any
 
-import requests
-
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit
+from .base import SourceContext
 
 SOURCE_NAME = "crossref"
 DEFAULT_DELAY = 2.0
@@ -18,29 +17,16 @@ SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.TITLE})
 _BASE = "https://api.crossref.org/works"
 
 
-def _mailto() -> str:
-    return os.environ.get("OPENALEX_MAILTO", "").strip()
+def build_context() -> SourceContext:
+    """Build the CrossRef :class:`SourceContext` once per run.
 
-
-def _user_agent() -> str:
-    mailto = _mailto()
-    if mailto:
-        return f"ref-checker/0.1 (mailto:{mailto})"
-    return "ref-checker/0.1"
-
-
-def _polite_params(base: dict[str, Any] | None = None) -> dict[str, Any]:
-    params: dict[str, Any] = dict(base or {})
-    mailto = _mailto()
-    if mailto:
-        params["mailto"] = mailto
-    return params
-
-
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({"User-Agent": _user_agent()})
-    return s
+    Shares ``OPENALEX_MAILTO`` with OpenAlex — same polite-pool convention.
+    """
+    mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
+    user_agent = f"ref-checker/0.1 (mailto:{mailto})" if mailto else "ref-checker/0.1"
+    params = {"mailto": mailto} if mailto else None
+    session = build_session(user_agent, params=params)
+    return SourceContext(session=session)
 
 
 def _normalize_doi(doi: str | None) -> str | None:
@@ -85,11 +71,11 @@ def _summarize(entry: dict) -> dict[str, Any]:
     }
 
 
-def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]:
     norm = _normalize_doi(doi)
     if not norm:
         return None, None
-    resp = _session().get(f"{_BASE}/{norm}", params=_polite_params(), timeout=30)
+    resp = ctx.session.get(f"{_BASE}/{norm}", timeout=30)
     if resp.status_code == 200:
         message = resp.json().get("message", {})
         return _summarize(message), 1.0
@@ -101,14 +87,14 @@ def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
 
 
 def search_by_title(
-    title: str,
+    title: str, ctx: SourceContext,
 ) -> tuple[dict | None, float | None]:
-    params = _polite_params({
+    params = {
         "query.bibliographic": title,
         "rows": 5,
         "select": "DOI,title,author,published-print,published-online,container-title,type,URL",
-    })
-    resp = _session().get(_BASE, params=params, timeout=30)
+    }
+    resp = ctx.session.get(_BASE, params=params, timeout=30)
     if resp.status_code == 200:
         items = resp.json().get("message", {}).get("items", [])
         if not items:
