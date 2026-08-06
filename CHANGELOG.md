@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-06
+
 ### Added
 
+- CI: GitHub Actions workflow running `ruff check` and `pytest` on Python
+  3.10–3.13 for every push and pull request.
+- `ruff` added as a dev dependency, with a lint configuration in
+  `pyproject.toml`.
 - `extract.load_references_from_list()`: a single shared loader used by both
   `check --refs-json` and `show`, so the two commands interpret the same
   bare refs JSON identically. Missing `index` fields are auto-assigned from
@@ -35,31 +41,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `error` for retry-planning and `exhausted_sources` purposes — see
   `BACKLOG.md` for the rationale.
 
-### Fixed
-
-- **Sidecar identity bug**: `check --refs-json` previously passed entries
-  straight to `Reference.from_dict()`, which defaults a missing `index` to
-  `0` — so multiple ref entries without an explicit `index` could silently
-  collide on index `0`, corrupting in-memory dicts, the sidecar, and output.
-  `show` already auto-assigned indices correctly; `check` now matches it.
-- **Sidecar hash under-specification**: `refs_hash()` previously hashed only
-  `index` + `raw`, so editing a structured field (title, DOI, year, authors,
-  etc.) without touching `raw` left a stale sidecar looking valid. The hash
-  now covers every lookup-relevant field. This changes the hash output for
-  all existing sidecars — see the `SIDECAR_SCHEMA_VERSION` bump below.
-- **Duplicated OSTI confidence policy**: `format._osti_id_if_confident()`
-  independently reimplemented the year-mismatch-penalty and
-  strong-match-threshold logic already used by
-  `LookupResult.recompute_best()`. Both now call a single shared
-  `results.apply_year_mismatch_penalty()` helper and reference the same
-  `results.STRONG_MATCH_THRESHOLD` constant, so the two policies cannot
-  silently drift apart. (Note: OSTI's confidence check still evaluates
-  OSTI's own per-source score, not the overall `LookupResult.evidence` —
-  those answer different questions when another source has a stronger
-  match than OSTI.)
-
 ### Changed
 
+- Bumped package version from `0.1.0` to `0.2.0` (no tagged release
+  previously existed for `0.1.0`; the README's install example already
+  referenced `v0.2.0`).
 - `SIDECAR_SCHEMA_VERSION` bumped `3` → `4`. Sidecars written by v3 (and all
   earlier versions) are hard-rejected on load with a WARNING, exactly like
   the v1/v2 rejection already in place — no silent partial-upgrade.
@@ -71,6 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   respectively; `check.py` is a thin backward-compatible re-export shim
   (~50 lines) so existing callers (`cli/main.py`) and any code reaching
   into `check.<name>` keep working unchanged. No behavior change.
+- Earlier, `runtime.py` (`_Shutdown`, `SourceHealth`, `_RateLimiter`,
+  `_retry`), `planner.py` (`_plan_ref_work`), and `sources/registry.py`
+  (static source-module lists) were extracted from `check.py` in the same
+  spirit — the whole orchestration module has been progressively split
+  into focused subsystems across this release.
 - **Tests reorganized to match**: the 1496-line `test_check_lifecycle.py`
   (15 test classes) has been split into five focused files —
   `test_runtime.py` (circuit breaker, duration formatting, rate limiter),
@@ -86,26 +77,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-export — the same fix pattern used when `runtime.py` was first
   extracted.
 
-## [0.2.0] - 2026-08-06
-
-### Added
-
-- CI: GitHub Actions workflow running `ruff check` and `pytest` on Python
-  3.10–3.13 for every push and pull request.
-- `ruff` added as a dev dependency, with a lint configuration in
-  `pyproject.toml`.
-
-### Changed
-
-- Bumped package version from `0.1.0` to `0.2.0` (no tagged release
-  previously existed for `0.1.0`; the README's install example already
-  referenced `v0.2.0`).
-
 ### Fixed
 
 - Lint cleanup: removed unused imports and local variables, renamed
   ambiguous single-letter variable names, removed no-op `f`-string
   prefixes. No behavior change; full test suite (361 tests) remains green.
+- **Sidecar identity bug**: `check --refs-json` previously passed entries
+  straight to `Reference.from_dict()`, which defaults a missing `index` to
+  `0` — so multiple ref entries without an explicit `index` could silently
+  collide on index `0`, corrupting in-memory dicts, the sidecar, and output.
+  `show` already auto-assigned indices correctly; `check` now matches it.
+- **Sidecar hash under-specification**: `refs_hash()` previously hashed only
+  `index` + `raw`, so editing a structured field (title, DOI, year, authors,
+  etc.) without touching `raw` left a stale sidecar looking valid. The hash
+  now covers every lookup-relevant field. This changes the hash output for
+  all existing sidecars — see the `SIDECAR_SCHEMA_VERSION` bump above.
+- **Duplicated OSTI confidence policy**: `format._osti_id_if_confident()`
+  independently reimplemented the year-mismatch-penalty and
+  strong-match-threshold logic already used by
+  `LookupResult.recompute_best()`. Both now call a single shared
+  `results.apply_year_mismatch_penalty()` helper and reference the same
+  `results.STRONG_MATCH_THRESHOLD` constant, so the two policies cannot
+  silently drift apart. (Note: OSTI's confidence check still evaluates
+  OSTI's own per-source score, not the overall `LookupResult.evidence` —
+  those answer different questions when another source has a stronger
+  match than OSTI.)
 
 ## [0.1.0] - historical
 
