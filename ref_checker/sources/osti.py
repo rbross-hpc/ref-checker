@@ -14,10 +14,13 @@ from typing import Any
 
 import requests
 
+from ..model import QueryKind
 from ..similarity import title_ratio
 from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "osti"
+DEFAULT_DELAY = 2.0
+SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.TITLE})
 
 _BASE = "https://www.osti.gov/api/v1/records"
 

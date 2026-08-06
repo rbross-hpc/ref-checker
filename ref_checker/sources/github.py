@@ -11,6 +11,7 @@ from typing import Any
 import requests
 
 SOURCE_NAME = "github"
+DEFAULT_DELAY = 1.0
 
 _USER_AGENT = "ref-checker/0.1"
 

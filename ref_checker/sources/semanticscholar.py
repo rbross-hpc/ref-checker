@@ -7,10 +7,13 @@ from typing import Any
 
 import requests
 
+from ..model import QueryKind
 from ..similarity import title_ratio
 from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "semanticscholar"
+DEFAULT_DELAY = 8.0
+SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.TITLE})
 
 _BASE = "https://api.semanticscholar.org/graph/v1/paper"
 _FIELDS = "title,authors,year,venue,externalIds"

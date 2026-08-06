@@ -28,6 +28,9 @@ This file is a short index. See:
     rate limiting/retries, concurrency, resume, and the results sidecar
     (`engine.py`, `runner.py`, `runtime.py`, `planner.py`, `results.py`,
     `sidecar.py`).
+  - [docs/source-adapter-contract.md](docs/source-adapter-contract.md) —
+    the capability contract each source module declares
+    (`sources/base.py`, `SUPPORTED_QUERY_KINDS`, `DEFAULT_DELAY`).
   - [docs/skills-subsystem.md](docs/skills-subsystem.md) — the bundled
     Agent Skill packaging design (`skills/`, `cli/skill.py`).
 
@@ -68,7 +71,8 @@ ref-checker/
     │           └── schema.md      # single source of truth for the reference JSON schema
     └── sources/
         ├── __init__.py
-        ├── registry.py            # static SCHOLARLY_SOURCES / ALL_SOURCE_NAMES lists
+        ├── base.py                # ScholarlySource / LivenessSource capability Protocols
+        ├── registry.py            # static SCHOLARLY_SOURCES / ALL_SOURCE_NAMES / DEFAULT_DELAYS
         ├── _http.py               # shared Retry-After parsing helpers
         ├── openalex.py            # primary scholarly source
         ├── crossref.py            # secondary scholarly source

@@ -6,8 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `ref_checker.sources.base`: `ScholarlySource` / `LivenessSource`
+  `typing.Protocol` definitions formalizing the source adapter contract,
+  plus a shared `FN_BY_KIND` mapping (`QueryKind` -> conventional function
+  name). Every source module now declares `DEFAULT_DELAY` and (for
+  scholarly sources) `SUPPORTED_QUERY_KINDS`, replacing implicit
+  `getattr(src, fn_name, None) is None` capability discovery in
+  `engine.py` with an explicit check. See
+  `docs/source-adapter-contract.md`.
+- `tests/test_source_contract.py`: structural regression tests asserting
+  every registered source module satisfies its Protocol and that
+  `SUPPORTED_QUERY_KINDS` never drifts out of sync with the functions a
+  module actually implements.
+
 ### Fixed
 
+- **Duplicated rate-limit defaults**: the per-source delay defaults were
+  hardcoded identically in three places (`engine.py`, `runner.py`, and
+  eight `--delay-<source>` argparse defaults in `cli/main.py`). Now
+  derived once as `sources.registry.DEFAULT_DELAYS` from each source
+  module's own `DEFAULT_DELAY`, and imported everywhere else. No
+  behavior change.
+- **Duplicated `lookup` subcommand capability logic**: `cli/main.py`'s
+  `lookup` subcommand independently re-encoded which flags each source
+  accepts (hardcoded exclusion tuples in the parser) and which function to
+  call for a given source/argument combination (a per-source `if/elif`
+  chain in `run_lookup`). Both now derive from each source's
+  `SUPPORTED_QUERY_KINDS`. No CLI-facing change — same flags accepted per
+  source, same dispatch preference order (arXiv ID before DOI for the
+  `arxiv` source; DOI before arXiv ID before title elsewhere).
 - **Duplicated status-bucket policy**: `format.format_result()` independently
   reimplemented the `OK`/`CLOSEST`/`NO MATCH` threshold logic already
   computed by `sidecar.status_label()`. Both now agree by construction —

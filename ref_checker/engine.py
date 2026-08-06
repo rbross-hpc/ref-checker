@@ -7,22 +7,13 @@ orchestration module into focused subsystems. No behavior change.
 from __future__ import annotations
 
 from .extract import Reference
-from .model import OutcomeKind
+from .model import OutcomeKind, QueryKind
 from .results import LookupResult, _Stats
 from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration, _retry
 from .sources import arxiv, github, url as url_source
+from .sources.base import FN_BY_KIND as _FN_BY_KIND
+from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
-
-_DEFAULT_DELAYS: dict[str, float] = {
-    "openalex": 2.0,
-    "crossref": 2.0,
-    "osti": 2.0,
-    "dblp": 1.0,
-    "semanticscholar": 8.0,
-    "arxiv": 3.0,
-    "github": 1.0,
-    "url": 1.0,
-}
 
 
 def lookup_reference(
@@ -63,15 +54,16 @@ def lookup_reference(
             return True
         return src_name in sources_to_query
 
-    def call(src, fn_name: str, queried_by: str, *args) -> tuple[dict | None, float | None]:
+    def call(src, queried_by: str, *args) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
             result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
                                  note="session circuit breaker")
             return None, None
-        fn = getattr(src, fn_name, None)
-        if fn is None:
+        kind = QueryKind(queried_by)
+        if kind not in src.SUPPORTED_QUERY_KINDS:
             return None, None
+        fn = getattr(src, _FN_BY_KIND[kind])
         rl.wait(src_name)
         # Re-check after rl.wait — another worker may have disabled the source
         # while we were waiting on the per-source rate limiter.
@@ -240,7 +232,7 @@ def lookup_reference(
         )
 
     if ref.arxiv_id and not _id_confirmed() and _should_query(arxiv.SOURCE_NAME) and not _stopped():
-        call(arxiv, "get_by_arxiv_id", "arxiv_id", ref.arxiv_id)
+        call(arxiv, "arxiv_id", ref.arxiv_id)
         if _id_confirmed():
             result.recompute_best(ref, min_match)
             return result
@@ -265,10 +257,10 @@ def lookup_reference(
             continue
 
         if ref.doi:
-            call(src, "get_by_doi", "doi", ref.doi)
+            call(src, "doi", ref.doi)
 
         if not _id_confirmed() and ref.arxiv_id and src_name != arxiv.SOURCE_NAME:
-            call(src, "get_by_arxiv_id", "arxiv_id", ref.arxiv_id)
+            call(src, "arxiv_id", ref.arxiv_id)
 
         if not _id_confirmed() and ref.title:
             # Only title-search if we don't already have a strong title hit ≥ 0.90
@@ -278,7 +270,7 @@ def lookup_reference(
                     if entry["score"] > best_title:
                         best_title = entry["score"]
             if best_title < 0.90:
-                call(src, "search_by_title", "title", ref.title)
+                call(src, "title", ref.title)
 
     # --- Generic URL liveness fallback ---
     result.recompute_best(ref, min_match)

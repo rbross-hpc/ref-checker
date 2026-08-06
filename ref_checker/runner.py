@@ -23,17 +23,7 @@ from .results import LookupResult, _Stats
 from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration
 from . import sidecar as _sidecar
 from .sources.registry import ALL_SOURCE_NAMES as _ALL_SOURCE_NAMES
-
-_DEFAULT_DELAYS: dict[str, float] = {
-    "openalex": 2.0,
-    "crossref": 2.0,
-    "osti": 2.0,
-    "dblp": 1.0,
-    "semanticscholar": 8.0,
-    "arxiv": 3.0,
-    "github": 1.0,
-    "url": 1.0,
-}
+from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 
 _SS_UNAUTH_DELAY = 12.0
 

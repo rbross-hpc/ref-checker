@@ -7,7 +7,10 @@ import os
 import sys
 
 from .. import check, extract, pdf
+from ..model import QueryKind
 from ..sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
+from ..sources.base import FN_BY_KIND as _FN_BY_KIND
+from ..sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from . import show as show_mod
 from . import skill as skill_mod
 
@@ -43,22 +46,22 @@ def _build_check_parser(sub) -> None:
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
     p.add_argument("--min-match", type=float, default=0.80, metavar="F",
                    help="Minimum similarity to report as CLOSEST (default: 0.80)")
-    p.add_argument("--delay-openalex", type=float, default=2.0, metavar="S",
-                   help="Seconds between OpenAlex calls (default: 2.0)")
-    p.add_argument("--delay-crossref", type=float, default=2.0, metavar="S",
-                   help="Seconds between CrossRef calls (default: 2.0)")
-    p.add_argument("--delay-osti", type=float, default=2.0, metavar="S",
-                   help="Seconds between OSTI calls (default: 2.0)")
-    p.add_argument("--delay-dblp", type=float, default=1.0, metavar="S",
-                   help="Seconds between DBLP calls (default: 1.0)")
-    p.add_argument("--delay-semanticscholar", type=float, default=8.0, metavar="S",
-                   help="Seconds between Semantic Scholar calls (default: 8.0)")
-    p.add_argument("--delay-arxiv", type=float, default=3.0, metavar="S",
-                   help="Seconds between arXiv calls (default: 3.0)")
-    p.add_argument("--delay-github", type=float, default=1.0, metavar="S",
-                   help="Seconds between GitHub liveness checks (default: 1.0)")
-    p.add_argument("--delay-url", type=float, default=1.0, metavar="S",
-                   help="Seconds between generic URL liveness checks (default: 1.0)")
+    p.add_argument("--delay-openalex", type=float, default=_DEFAULT_DELAYS["openalex"], metavar="S",
+                   help=f"Seconds between OpenAlex calls (default: {_DEFAULT_DELAYS['openalex']})")
+    p.add_argument("--delay-crossref", type=float, default=_DEFAULT_DELAYS["crossref"], metavar="S",
+                   help=f"Seconds between CrossRef calls (default: {_DEFAULT_DELAYS['crossref']})")
+    p.add_argument("--delay-osti", type=float, default=_DEFAULT_DELAYS["osti"], metavar="S",
+                   help=f"Seconds between OSTI calls (default: {_DEFAULT_DELAYS['osti']})")
+    p.add_argument("--delay-dblp", type=float, default=_DEFAULT_DELAYS["dblp"], metavar="S",
+                   help=f"Seconds between DBLP calls (default: {_DEFAULT_DELAYS['dblp']})")
+    p.add_argument("--delay-semanticscholar", type=float, default=_DEFAULT_DELAYS["semanticscholar"], metavar="S",
+                   help=f"Seconds between Semantic Scholar calls (default: {_DEFAULT_DELAYS['semanticscholar']})")
+    p.add_argument("--delay-arxiv", type=float, default=_DEFAULT_DELAYS["arxiv"], metavar="S",
+                   help=f"Seconds between arXiv calls (default: {_DEFAULT_DELAYS['arxiv']})")
+    p.add_argument("--delay-github", type=float, default=_DEFAULT_DELAYS["github"], metavar="S",
+                   help=f"Seconds between GitHub liveness checks (default: {_DEFAULT_DELAYS['github']})")
+    p.add_argument("--delay-url", type=float, default=_DEFAULT_DELAYS["url"], metavar="S",
+                   help=f"Seconds between generic URL liveness checks (default: {_DEFAULT_DELAYS['url']})")
     p.add_argument("--refs-cache", default=None, metavar="PATH",
                    help="Refs cache file (default: <pdf-stem>.refs.json next to PDF)")
     p.add_argument("--no-refs-cache", action="store_true",
@@ -139,6 +142,16 @@ def _build_skill_parser(sub) -> None:
                     help="Overwrite PATH if it already exists and is non-empty.")
 
 
+_LOOKUP_SOURCES = {
+    "openalex": openalex,
+    "crossref": crossref,
+    "osti": osti,
+    "dblp": dblp,
+    "semanticscholar": semanticscholar,
+    "arxiv": arxiv,
+}
+
+
 def _build_lookup_parser(sub) -> None:
     p = sub.add_parser(
         "lookup",
@@ -146,17 +159,18 @@ def _build_lookup_parser(sub) -> None:
     )
     lsub = p.add_subparsers(dest="source", required=True, metavar="SOURCE")
 
-    for name in ("openalex", "crossref", "osti", "dblp", "semanticscholar", "arxiv"):
+    for name, src in _LOOKUP_SOURCES.items():
         sp = lsub.add_parser(name, help=f"Query {name}.")
         group = sp.add_mutually_exclusive_group(required=True)
-        if name != "dblp":
+        kinds = src.SUPPORTED_QUERY_KINDS
+        if QueryKind.DOI in kinds:
             group.add_argument("--doi", help="DOI to look up")
-        if name not in ("crossref", "dblp", "osti"):
+        if QueryKind.ARXIV_ID in kinds:
             id_flag = "--id" if name == "arxiv" else "--arxiv-id"
-            id_dest = "arxiv_id"
             id_help = "arXiv ID" if name == "arxiv" else "arXiv ID to look up"
-            group.add_argument(id_flag, dest=id_dest, help=id_help)
-        group.add_argument("--title", help="Title to search for")
+            group.add_argument(id_flag, dest="arxiv_id", help=id_help)
+        if QueryKind.TITLE in kinds:
+            group.add_argument("--title", help="Title to search for")
 
 
 def _log_credentials() -> None:
@@ -355,51 +369,38 @@ def run_extract(args) -> None:
     print(f"[ref-checker] Written: {json_path}", file=sys.stderr)
 
 
+# Preference order when a lookup subcommand is (mutual-exclusion-wise)
+# given more than one identifying argument. Every source prefers DOI over
+# arXiv ID over title, except arxiv itself — an arXiv ID is arxiv's native
+# identifier, so it's tried first there.
+_DEFAULT_KIND_PREFERENCE = (QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.TITLE)
+_KIND_PREFERENCE_OVERRIDES = {
+    "arxiv": (QueryKind.ARXIV_ID, QueryKind.DOI, QueryKind.TITLE),
+}
+
+
 def run_lookup(args) -> None:
     source = args.source
-    arxiv_id = getattr(args, "arxiv_id", None)
-
-    if source == "openalex":
-        if args.doi:
-            summary, sim = openalex.get_by_doi(args.doi)
-        elif arxiv_id:
-            summary, sim = openalex.get_by_arxiv_id(arxiv_id)
-        else:
-            summary, sim = openalex.search_by_title(args.title)
-
-    elif source == "crossref":
-        if args.doi:
-            summary, sim = crossref.get_by_doi(args.doi)
-        else:
-            summary, sim = crossref.search_by_title(args.title)
-
-    elif source == "osti":
-        if args.doi:
-            summary, sim = osti.get_by_doi(args.doi)
-        else:
-            summary, sim = osti.search_by_title(args.title)
-
-    elif source == "dblp":
-        summary, sim = dblp.search_by_title(args.title)
-
-    elif source == "semanticscholar":
-        if args.doi:
-            summary, sim = semanticscholar.get_by_doi(args.doi)
-        elif arxiv_id:
-            summary, sim = semanticscholar.get_by_arxiv_id(arxiv_id)
-        else:
-            summary, sim = semanticscholar.search_by_title(args.title)
-
-    elif source == "arxiv":
-        if arxiv_id:
-            summary, sim = arxiv.get_by_arxiv_id(arxiv_id)
-        elif args.doi:
-            summary, sim = arxiv.get_by_doi(args.doi)
-        else:
-            summary, sim = arxiv.search_by_title(args.title)
-
-    else:
+    src = _LOOKUP_SOURCES.get(source)
+    if src is None:
         print(f"Unknown source: {source}", file=sys.stderr)
+        sys.exit(1)
+
+    arg_by_kind = {
+        QueryKind.DOI: getattr(args, "doi", None),
+        QueryKind.ARXIV_ID: getattr(args, "arxiv_id", None),
+        QueryKind.TITLE: getattr(args, "title", None),
+    }
+    preference = _KIND_PREFERENCE_OVERRIDES.get(source, _DEFAULT_KIND_PREFERENCE)
+
+    for kind in preference:
+        value = arg_by_kind.get(kind)
+        if value and kind in src.SUPPORTED_QUERY_KINDS:
+            fn = getattr(src, _FN_BY_KIND[kind])
+            summary, sim = fn(value)
+            break
+    else:
+        print(f"No usable identifier/title supplied for {source}.", file=sys.stderr)
         sys.exit(1)
 
     print(json.dumps({"summary": summary, "similarity": sim, "source": source}, indent=2))

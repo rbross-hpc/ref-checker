@@ -76,9 +76,11 @@ line is shown, indicating the DOI may resolve to a differently-titled paper
   atomically computes the next available slot for a source and reserves it
   before sleeping, so under concurrency N threads calling the same source
   are still spaced exactly `delay` seconds apart. Default delays (see
-  `engine._DEFAULT_DELAYS`; overridable per-source via `--delay-<source>`):
-  OpenAlex 2.0s, CrossRef 2.0s, OSTI 2.0s, DBLP 1.0s, Semantic Scholar 8.0s,
-  arXiv 3.0s, GitHub 1.0s, URL 1.0s.
+  `sources/registry.py:DEFAULT_DELAYS`, derived from each source module's
+  own `DEFAULT_DELAY` constant — see
+  [source-adapter-contract.md](source-adapter-contract.md); overridable
+  per-source via `--delay-<source>`): OpenAlex 2.0s, CrossRef 2.0s, OSTI
+  2.0s, DBLP 1.0s, Semantic Scholar 8.0s, arXiv 3.0s, GitHub 1.0s, URL 1.0s.
 - Per-call retry (`_retry` in `runtime.py`): up to 3 attempts with 5s / 10s /
   15s backoff on any exception (HTTP 429, 5xx, network timeout). 404 and 410
   are treated as confirmed misses (no retry). A `RateLimited` exception
