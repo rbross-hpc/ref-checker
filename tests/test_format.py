@@ -323,6 +323,28 @@ class TestOstiIdIfConfident:
         })
         assert _osti_id_if_confident(ref, result) is None
 
+    def test_checks_ostis_own_score_not_a_stronger_other_source(self):
+        """OSTI's own hit_title score is weak (0.85, below threshold), but
+        a different source (crossref) has a much stronger match and
+        therefore 'wins' as result.best_source / drives result.evidence.
+        The OSTI-id-confidence check must still say no — it should not be
+        fooled by another source's stronger overall evidence.
+        """
+        ref = _ref(year=2020)
+        result = LookupResult(per_source={
+            "osti": _osti_entry("hit_title", score=0.85, cand_year=2020),
+            "crossref": {
+                "status": "hit_title", "queried_by": ["title"],
+                "score": 0.98,
+                "summary": {"title": "A Paper", "year": 2020},
+                "note": None,
+            },
+        })
+        result.recompute_best(ref, 0.80)
+        assert result.best_source == "crossref"
+        assert result.evidence is not None
+        assert _osti_id_if_confident(ref, result) is None
+
 
 # --------------------------------------------------------------------------
 # --with-osti-id: format_result integration

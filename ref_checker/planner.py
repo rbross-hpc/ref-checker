@@ -1,12 +1,13 @@
 """Resume / smart-rerun planning: decide which sources to (re)query for a
 reference given its prior sidecar state.
 
-Extracted from ``check.py`` (which re-exports ``_plan_ref_work`` for backward
-compatibility with existing callers/tests) as part of splitting the
-orchestration module into focused subsystems. No behavior change.
+Originally extracted from ``check.py`` (which re-exports ``_plan_ref_work``
+for backward compatibility with existing callers/tests) as part of splitting
+the orchestration module into focused subsystems.
 """
 from __future__ import annotations
 
+from .model import OutcomeKind
 from .results import LookupResult
 from .sources.registry import ALL_SOURCE_NAMES
 
@@ -46,8 +47,8 @@ def _plan_ref_work(
             targets.add(src)
             continue
         st = entry.get("status")
-        if st == "disabled":
+        if st == OutcomeKind.DISABLED:
             targets.add(src)
-        elif st == "error" and retry_errored:
+        elif st in (OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED) and retry_errored:
             targets.add(src)
     return targets

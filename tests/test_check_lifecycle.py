@@ -205,6 +205,22 @@ class TestPerSource:
         assert result.per_source["openalex"]["status"] == "error"
         assert "openalex" in result.exhausted_sources
 
+    def test_records_rate_limited_when_source_exhausts_on_rate_limit(self, stub_sources):
+        from ref_checker.errors import RateLimited
+
+        def _always_rate_limited(*a, **kw):
+            raise RateLimited(retry_after=0.0)
+        stub_sources["openalex"].get_by_doi = _always_rate_limited
+        stub_sources["openalex"].search_by_title = _always_rate_limited
+
+        ref = _ref(doi="10.1/test")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.per_source["openalex"]["status"] == "rate_limited"
+        # rate_limited counts toward exhausted_sources exactly like error —
+        # both mean "we did not get real information", just different cause.
+        assert "openalex" in result.exhausted_sources
+
     def test_disabled_source_marked_and_skipped(self, stub_sources):
         def _boom(*a, **kw):
             raise RuntimeError("boom")
@@ -217,6 +233,79 @@ class TestPerSource:
         result = check_mod.lookup_reference(ref, min_match=0.80, health=health)
 
         assert result.per_source["openalex"]["status"] == "disabled"
+
+
+# --------------------------------------------------------------------------
+# EvidenceLevel computation (additive alongside OK/CLOSEST/NO MATCH status)
+# --------------------------------------------------------------------------
+
+
+class TestEvidenceLevel:
+    def test_doi_hit_is_confirmed_identifier(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
+
+        ref = _ref(doi="10.1/test")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.CONFIRMED_IDENTIFIER
+
+    def test_github_liveness_is_live_resource_only(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        stub_sources["github"].check_url = lambda url: (
+            {"source": "github", "title": None, "authors": [], "year": None,
+             "venue": None, "doi": None, "url": url, "external_id": None},
+            1.0,
+            [],
+        )
+
+        ref = _ref(github_url="https://github.com/org/repo")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.LIVE_RESOURCE_ONLY
+
+    def test_strong_title_match_is_strong_metadata_match(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.95)
+
+        ref = _ref(title="A Paper")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.STRONG_METADATA_MATCH
+
+    def test_weak_title_match_is_weak_or_ambiguous(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.82)
+
+        ref = _ref(title="A Paper")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.WEAK_OR_AMBIGUOUS_MATCH
+
+    def test_no_match_at_all_is_not_found(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        ref = _ref(title="Totally Unmatched Paper")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.NOT_FOUND
+
+    def test_exhausted_sources_with_no_match_is_incomplete(self, stub_sources):
+        from ref_checker.model import EvidenceLevel
+
+        def _boom(*a, **kw):
+            raise RuntimeError("network down")
+        stub_sources["openalex"].get_by_doi = _boom
+        stub_sources["openalex"].search_by_title = _boom
+
+        ref = _ref(doi="10.1/test", title="Some Title")
+        result = check_mod.lookup_reference(ref, min_match=0.80)
+
+        assert result.evidence == EvidenceLevel.INCOMPLETE
 
 
 # --------------------------------------------------------------------------
@@ -283,6 +372,20 @@ class TestPlanRefWork:
                                     "note": "session circuit breaker"}
         targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" in targets
+
+    def test_rate_limited_retried_like_error(self):
+        r = LookupResult(display_score=0.30)
+        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
+                                    "score": None, "summary": None}
+        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
+        assert "crossref" in targets
+
+    def test_rate_limited_not_retried_when_flag_off(self):
+        r = LookupResult(display_score=0.30)
+        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
+                                    "score": None, "summary": None}
+        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
+        assert "crossref" not in targets
 
 
 # --------------------------------------------------------------------------
@@ -768,7 +871,7 @@ class TestBoundedSubmission:
         first_entry = next(iter(data["references"].values()))
         first_oa = first_entry["result"].get("per_source", {}).get("openalex")
         assert first_oa is not None
-        assert first_oa["status"] == "error"
+        assert first_oa["status"] == "rate_limited"
         assert "rate-limit" in (first_oa.get("note") or "").lower()
 
         last_key = list(data["references"].keys())[-1]
@@ -926,7 +1029,7 @@ class TestQuotaAndVisibility:
         data = json.loads(sc.read_text())
         first_oa = data["references"]["1"]["result"]["per_source"].get("openalex")
         assert first_oa is not None
-        assert first_oa["status"] == "error"
+        assert first_oa["status"] == "rate_limited"
         assert "quota exhausted" in (first_oa.get("note") or "").lower()
 
         later_oa = data["references"]["5"]["result"]["per_source"].get("openalex")

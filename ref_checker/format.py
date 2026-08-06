@@ -5,7 +5,8 @@ import os
 import sys
 
 from .extract import Reference
-from .results import LookupResult
+from .model import OutcomeKind
+from .results import STRONG_MATCH_THRESHOLD, LookupResult, apply_year_mismatch_penalty
 
 _USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
 _GREEN  = "\033[32m" if _USE_COLOR else ""
@@ -13,16 +14,17 @@ _RED    = "\033[31m" if _USE_COLOR else ""
 _ORANGE = "\033[33m" if _USE_COLOR else ""
 _RESET  = "\033[0m"  if _USE_COLOR else ""
 
-_OSTI_CONFIDENT_TITLE_THRESHOLD = 0.90
-_OSTI_YEAR_PENALTY = 0.10
-
 
 def _osti_id_if_confident(ref: Reference, result: LookupResult) -> str | None:
     """Return the OSTI external_id if the OSTI per-source entry is confident.
 
     Confident means:
-      - status == "hit_id" (DOI match), OR
-      - status == "hit_title" AND post-year-penalty score >= 0.90.
+      - status == hit_id (DOI match), OR
+      - status == hit_title AND post-year-penalty score >= STRONG_MATCH_THRESHOLD.
+
+    This checks OSTI's own per-source entry specifically — not
+    result.evidence, which reflects whichever source had the overall best
+    match and may be a different, stronger-scoring source than OSTI.
     """
     entry = result.per_source.get("osti") if result.per_source else None
     if not entry:
@@ -32,16 +34,15 @@ def _osti_id_if_confident(ref: Reference, result: LookupResult) -> str | None:
     if not ext_id:
         return None
     status = entry.get("status")
-    if status == "hit_id":
+    if status == OutcomeKind.HIT_ID:
         return str(ext_id)
-    if status == "hit_title":
+    if status == OutcomeKind.HIT_TITLE:
         score = entry.get("score")
         if score is None:
             return None
         cand_year = summary.get("year")
-        if ref.year and cand_year and ref.year != cand_year:
-            score = max(0.0, score - _OSTI_YEAR_PENALTY)
-        if score >= _OSTI_CONFIDENT_TITLE_THRESHOLD:
+        score = apply_year_mismatch_penalty(score, ref.year, cand_year)
+        if score >= STRONG_MATCH_THRESHOLD:
             return str(ext_id)
     return None
 
@@ -105,7 +106,7 @@ def format_result(
         for note in result.id_notes:
             lines.append(f"    {_ORANGE}Note:{_RESET} {note}")
 
-    elif s and effective >= 0.90:
+    elif s and effective >= STRONG_MATCH_THRESHOLD:
         lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {_id_str(s)}{src_tag}{osti_suffix}")
         if result.year_mismatch_note:
             lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
