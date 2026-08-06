@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Duplicated status-bucket policy**: `format.format_result()` independently
+  reimplemented the `OK`/`CLOSEST`/`NO MATCH` threshold logic already
+  computed by `sidecar.status_label()`. Both now agree by construction —
+  `format_result()` calls `status_label()` directly instead of re-deriving
+  the bucket from `display_score`/`STRONG_MATCH_THRESHOLD`/`min_match`
+  comparisons. No output change; a regression test
+  (`TestFormatResultMatchesStatusLabel`) guards against the two
+  implementations silently diverging again.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added

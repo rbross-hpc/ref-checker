@@ -7,6 +7,7 @@ import sys
 from .extract import Reference
 from .model import OutcomeKind
 from .results import STRONG_MATCH_THRESHOLD, LookupResult, apply_year_mismatch_penalty
+from .sidecar import status_label
 
 _USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
 _GREEN  = "\033[32m" if _USE_COLOR else ""
@@ -97,21 +98,21 @@ def format_result(
             osti_suffix = f"  (OSTI: {osti_id})"
 
     score_str = f"({score:.2f})" if score is not None else "(----)"
-    effective = score if score is not None else 1.0
+    label = status_label(result, min_match)
 
-    if s and (result.id_confirmed or result.is_liveness):
+    if label == "OK" and (result.id_confirmed or result.is_liveness):
         lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {_id_str(s)}{src_tag}{osti_suffix}")
         if result.url_liveness_check:
             lines.append(f"    {_ORANGE}Note:{_RESET} URL liveness check only — no bibliographic record found")
         for note in result.id_notes:
             lines.append(f"    {_ORANGE}Note:{_RESET} {note}")
 
-    elif s and effective >= STRONG_MATCH_THRESHOLD:
+    elif label == "OK":
         lines.append(f"    {_GREEN}OK{_RESET} {score_str}  {_id_str(s)}{src_tag}{osti_suffix}")
         if result.year_mismatch_note:
             lines.append(f"    {_ORANGE}Note:{_RESET} year mismatch ({result.year_mismatch_note})")
 
-    elif s and effective >= min_match:
+    elif label == "CLOSEST":
         lines.append(f"    {_ORANGE}CLOSEST{_RESET} {score_str}{src_tag}{osti_suffix}")
         lines.append("        Closest candidate across services:")
         citation = _format_citation(
