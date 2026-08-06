@@ -1,6 +1,9 @@
 """Tests for output formatting functions."""
+import pytest
+
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
+from ref_checker.sidecar import status_label
 from ref_checker.format import (
     _format_citation,
     _format_ref_header,
@@ -214,6 +217,43 @@ class TestFormatResult:
         )
         out = format_result(ref, result, self.MIN_MATCH)
         assert "DOI title:" in out
+
+
+# --------------------------------------------------------------------------
+# format_result must not drift from sidecar.status_label(): both derive the
+# same OK/CLOSEST/NO MATCH bucket from the same LookupResult, and previously
+# did so via two independently-maintained threshold checks. format_result
+# now delegates to status_label() directly; this test guards against a
+# future edit reintroducing a second, divergent copy of that logic.
+# --------------------------------------------------------------------------
+
+
+class TestFormatResultMatchesStatusLabel:
+    MIN_MATCH = 0.80
+
+    @pytest.mark.parametrize("result_kwargs, expected_label", [
+        (dict(id_confirmed=True, display_score=0.99, best_source="openalex",
+              best_summary=_summary()), "OK"),
+        (dict(is_liveness=True, display_score=None, best_source="github",
+              best_summary={"url": "https://github.com/foo/bar", "doi": None, "title": None}), "OK"),
+        (dict(display_score=0.93, best_source="crossref", best_summary=_summary(doi=None)), "OK"),
+        (dict(display_score=0.85, best_source="crossref",
+              best_summary={"doi": None, "title": "Somewhat Related", "year": 2019,
+                            "url": "https://doi.org/10.1/y", "authors": ["Bob Jones"], "venue": "VLDB"}),
+         "CLOSEST"),
+        (dict(display_score=0.30, best_source="openalex",
+              best_summary={"doi": None, "title": "Nonexistent", "year": 2020,
+                            "url": None, "authors": [], "venue": None}),
+         "NO MATCH"),
+        (dict(display_score=0.0), "NO MATCH"),
+    ])
+    def test_status_bucket_matches(self, result_kwargs, expected_label):
+        ref = _ref()
+        result = LookupResult(**result_kwargs)
+        label = status_label(result, self.MIN_MATCH)
+        assert label == expected_label
+        out = format_result(ref, result, self.MIN_MATCH)
+        assert label in out
 
 
 # --------------------------------------------------------------------------
