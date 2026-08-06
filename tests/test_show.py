@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 
 
-from ref_checker import check as check_mod
+from ref_checker import runner as runner_mod
 from ref_checker import sidecar as sidecar_mod
 from ref_checker.cli import show as show_mod
 from ref_checker.extract import Reference
+from ref_checker.results import LookupResult
 
 
 def _ref(index=1, title="A Paper", year=2020, doi=None, arxiv_id=None,
@@ -101,7 +102,7 @@ class TestShowSidecar:
             _ref(index=2, title="Second", doi="10.1/second"),
         ]
 
-        r1 = check_mod.LookupResult(
+        r1 = LookupResult(
             doi_attempted="10.1/first",
             best_summary=_summary(doi="10.1/first", title="First"),
             display_score=1.0,
@@ -113,7 +114,7 @@ class TestShowSidecar:
             "score": 1.0, "summary": _summary(doi="10.1/first", title="First"),
             "note": None,
         }
-        r2 = check_mod.LookupResult(
+        r2 = LookupResult(
             doi_attempted="10.1/second",
             best_summary=_summary(doi="10.1/second", title="Second"),
             display_score=1.0,
@@ -145,7 +146,7 @@ class TestShowSidecar:
             _ref(index=1, title="Processed", doi="10.1/proc"),
             _ref(index=2, title="Skipped"),
         ]
-        r1 = check_mod.LookupResult(
+        r1 = LookupResult(
             doi_attempted="10.1/proc",
             best_summary=_summary(doi="10.1/proc", title="Processed"),
             display_score=1.0,
@@ -189,7 +190,7 @@ class TestShowSidecar:
         refs = [_ref(index=i, title=f"Ref {i}", doi=f"10.1/{i}") for i in [3, 1, 5, 2]]
         results = {}
         for r in refs:
-            lr = check_mod.LookupResult(
+            lr = LookupResult(
                 doi_attempted=r.doi,
                 best_summary=_summary(doi=r.doi, title=r.title),
                 display_score=1.0,
@@ -224,8 +225,8 @@ class TestEndOfRunHint:
             url as url_source,
         )
         monkeypatch.setattr(
-            check_mod, "_DEFAULT_DELAYS",
-            {k: 0.0 for k in check_mod._DEFAULT_DELAYS},
+            runner_mod, "_DEFAULT_DELAYS",
+            {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
         )
         for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
             for name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
@@ -236,7 +237,7 @@ class TestEndOfRunHint:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "Re-emit results anytime with:" in err
         assert "ref-checker show" in err
@@ -248,8 +249,8 @@ class TestEndOfRunHint:
             url as url_source,
         )
         monkeypatch.setattr(
-            check_mod, "_DEFAULT_DELAYS",
-            {k: 0.0 for k in check_mod._DEFAULT_DELAYS},
+            runner_mod, "_DEFAULT_DELAYS",
+            {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
         )
         for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
             for name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
@@ -259,6 +260,6 @@ class TestEndOfRunHint:
         monkeypatch.setattr(url_source, "check_url", lambda *a, **kw: (None, None, []))
 
         refs = [_ref(index=1, doi="10.1/x1")]
-        check_mod.check_references(refs, sidecar=None, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=None, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "Re-emit results anytime" not in err

@@ -4,10 +4,32 @@ Deferred work items — not scheduled, captured so they aren't lost.
 
 ## Documentation
 
-### PLAN.md sidecar section refresh
+### PLAN.md refresh: package layout tree + sidecar section
 
-`PLAN.md` lines 362–380 describe the results sidecar but predate the
-error-handling / smart-re-run work. Update to reflect current reality:
+`PLAN.md`'s "Package layout" tree (lines 16–53) is stale: it predates
+`runtime.py`, `planner.py`, `model.py`, `sources/registry.py`, and now
+`engine.py` / `runner.py`. `check.py` is no longer "driver: lookup, rate
+limiting, orchestration" — it's a thin backward-compatible re-export shim
+over the modules below. Update the tree to something like:
+
+```
+    ├── results.py                 # LookupResult dataclass + _Stats
+    ├── model.py                   # QueryKind / OutcomeKind / EvidenceLevel / SourceOutcome
+    ├── runtime.py                 # _Shutdown, SourceHealth, _RateLimiter, _retry
+    ├── planner.py                 # _plan_ref_work: smart-rerun source selection
+    ├── engine.py                  # lookup_reference: assess one reference
+    ├── runner.py                  # check_references: thread pool, resume, reporting
+    ├── check.py                   # backward-compat re-export shim over the above
+    ├── format.py                  # output formatting (format_result, colors)
+    ├── sidecar.py                 # results sidecar I/O and resume policy
+    └── sources/
+        ├── registry.py            # static SCHOLARLY_SOURCES / ALL_SOURCE_NAMES lists
+        ├── ...
+```
+
+Separately, `PLAN.md` lines 362–380 describe the results sidecar but
+predate the error-handling / smart-re-run work. Update to reflect current
+reality:
 
 - `schema_version` is now `4` (v1, v2, and v3 are hard-rejected on load; a
   WARNING is emitted when a recognized-but-outdated version is discarded).
