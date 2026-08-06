@@ -89,12 +89,14 @@ module:
 
 ## Shared `SourceContext`
 
-Every scholarly source (`openalex`, `crossref`, `osti`, `dblp`,
-`semanticscholar`, `arxiv`) implements:
+Every source module — scholarly (`openalex`, `crossref`, `osti`, `dblp`,
+`semanticscholar`, `arxiv`) and liveness (`github`, `url`) alike —
+implements:
 
 ```python
 def build_context() -> SourceContext: ...
-def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]: ...
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]: ...   # scholarly
+def check_url(urls: str, ctx: SourceContext) -> tuple[dict | None, float | None, list]:  # liveness
 ```
 
 `SourceContext` (`sources/base.py`) is a small dataclass holding only
@@ -104,22 +106,21 @@ deliberately does **not** include rate limiting or retry — those stay in
 talk to this source" (the context) separate from "how often/how
 resiliently to talk to any source" (the engine).
 
-`sources/registry.py:build_all_contexts()` builds one context per
-scholarly source. `runner.py:check_references()` calls this **once per
-run** and threads the resulting `contexts` dict through
-`engine.py:lookup_reference()` for every reference in that run — so every
-reference reuses the same underlying session (and thus connection pool)
-per source, rather than each HTTP call opening a fresh one. This is the
-main practical benefit: previously every `_session()` call built a brand
-new `requests.Session`.
+`sources/registry.py:build_all_contexts()` builds one context per source
+(`SCHOLARLY_SOURCES + LIVENESS_SOURCES`). `runner.py:check_references()`
+calls this **once per run** and threads the resulting `contexts` dict
+through `engine.py:lookup_reference()` for every reference in that run —
+so every reference reuses the same underlying session (and thus
+connection pool) per source, rather than each HTTP call opening a fresh
+one (scholarly sources) or none at all (liveness sources, which
+previously called bare `requests.head`/`requests.get` with no session).
+`engine.py`'s `call()` and `call_liveness()` both use the same
+`_ctx_for(src)` lazy-or-shared lookup, so this works identically for
+scholarly and liveness sources.
 
 `cli/main.py`'s single-shot `ref-checker lookup <source>` subcommand
 builds one throwaway context immediately before dispatching, since there's
 only one call to make.
-
-Liveness sources (`github`, `url`) don't have `SourceContext` support yet
-— see `BACKLOG.md`'s "Extend SourceContext (session pooling) to liveness
-sources" for that follow-up.
 
 ## Explicitly out of scope
 

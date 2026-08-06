@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Shared `SourceContext` (session pooling) for liveness sources**:
+  `github` and `url` each gain a `build_context() -> SourceContext`
+  function, and `check_url` now takes a mandatory trailing
+  `ctx: SourceContext` parameter, replacing bare `requests.head(...)` per
+  call with `ctx.session.head(...)`. Completes Part 2 of the
+  `SourceContext` work (Part 1 covered the 6 scholarly sources, above).
+  `sources/registry.py:build_all_contexts()` now builds contexts for all 8
+  sources; `engine.py:call_liveness()` uses the same context lookup as
+  `call()`. See `docs/source-adapter-contract.md`'s "Shared SourceContext"
+  section and `PLAN.md`.
 - **Shared `SourceContext` (session pooling) for scholarly sources**:
   `openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, and `arxiv`
   each gain a `build_context() -> SourceContext` function, and every

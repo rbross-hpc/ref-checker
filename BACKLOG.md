@@ -68,23 +68,6 @@ paper citing the same DOI skip re-querying it. Worth doing once the source
 adapter interface (below, or a future `Protocol`) makes it natural to wrap
 adapter calls in a caching layer.
 
-## Performance (continued)
-
-### Extend SourceContext (session pooling) to liveness sources
-
-Part 1 of the `SourceContext` work (see `PLAN.md`'s "Planned work" section)
-covers the 6 scholarly sources (`openalex`, `crossref`, `osti`, `dblp`,
-`arxiv`, `semanticscholar`). `github.py` and `url.py` are liveness sources
-with a different function shape (`check_url(urls, ctx)`, returning a
-3-tuple including a dead-URL list, vs. the 2-tuple scholarly functions) and
-currently use bare `requests.head` per call with no session at all —
-extending `SourceContext` to them would give them connection pooling for
-the first time. Deferred to a follow-up because it's a distinct-enough
-shape of change from "inject a session that already existed via a private
-`_session()` helper," and because no unit tests exercise `check_url`
-directly today (only engine-level stubs, which are signature-agnostic and
-would need no changes either way).
-
 ## Sources
 
 ### DBLP `Retry-After` handling on 503

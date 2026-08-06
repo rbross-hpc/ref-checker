@@ -129,6 +129,35 @@ class TestCheckReferences:
         assert len(seen_sessions) == 3
         assert len({id(s) for s in seen_sessions}) == 1
 
+    def test_same_session_reused_for_liveness_source_across_references(
+        self, stub_sources, tmp_path,
+    ):
+        """Part 2 of the SourceContext work: github/url liveness sources get
+        the same run-scoped session reuse as scholarly sources.
+        """
+        seen_sessions = []
+
+        def _record(urls, ctx):
+            seen_sessions.append(ctx.session)
+            return (
+                {"source": "github", "title": None, "authors": [], "year": None,
+                 "venue": None, "doi": None, "url": urls, "external_id": None},
+                1.0,
+                [],
+            )
+
+        stub_sources["github"].check_url = _record
+        refs = [
+            _ref(index=i, github_url=f"https://github.com/org/repo{i}")
+            for i in range(1, 4)
+        ]
+        sidecar = tmp_path / "results.json"
+
+        runner_mod.check_references(refs, sidecar=sidecar, pdf_name="test.pdf", jobs=1)
+
+        assert len(seen_sessions) == 3
+        assert len({id(s) for s in seen_sessions}) == 1
+
     def test_all_sources_disabled_breaks_and_flushes(self, stub_sources, tmp_path):
         def _boom(*a, **kw):
             raise RuntimeError("service down")

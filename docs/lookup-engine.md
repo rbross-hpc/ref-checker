@@ -118,12 +118,12 @@ line is shown, indicating the DOI may resolve to a differently-titled paper
   API response cache (see `BACKLOG.md`).
 - Similarly, `check_references()` calls `sources/registry.py:build_all_contexts()`
   once per run to build a `SourceContext` (session + credentials; see
-  [source-adapter-contract.md](source-adapter-contract.md)) per scholarly
-  source, then threads that same dict through `lookup_reference()` for
-  every reference — so every reference in the run reuses the same
-  `requests.Session` (and its connection pool) per source, instead of each
-  HTTP call opening a fresh connection. Like the rate limiter, this does
-  not persist across separate CLI invocations.
+  [source-adapter-contract.md](source-adapter-contract.md)) per source
+  (scholarly and liveness alike), then threads that same dict through
+  `lookup_reference()` for every reference — so every reference in the run
+  reuses the same `requests.Session` (and its connection pool) per source,
+  instead of each HTTP call opening a fresh connection. Like the rate
+  limiter, this does not persist across separate CLI invocations.
 
 ## Smart rerun (`planner.py`)
 

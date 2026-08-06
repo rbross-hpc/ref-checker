@@ -10,13 +10,23 @@ from typing import Any
 
 import requests
 
+from ._http import build_session
+from .base import SourceContext
+
 SOURCE_NAME = "github"
 DEFAULT_DELAY = 1.0
 
 _USER_AGENT = "ref-checker/0.1"
 
 
-def check_url(urls: str) -> tuple[dict | None, float | None, list[tuple[str, str]]]:
+def build_context() -> SourceContext:
+    """Build the GitHub :class:`SourceContext` once per run. User-Agent only."""
+    return SourceContext(session=build_session(_USER_AGENT))
+
+
+def check_url(
+    urls: str, ctx: SourceContext
+) -> tuple[dict | None, float | None, list[tuple[str, str]]]:
     """HEAD-check each space-separated URL in *urls*.
 
     Returns (summary, 1.0, []) on the first live URL.
@@ -26,12 +36,7 @@ def check_url(urls: str) -> tuple[dict | None, float | None, list[tuple[str, str
     dead: list[tuple[str, str]] = []
     for url in urls.split():
         try:
-            resp = requests.head(
-                url,
-                allow_redirects=True,
-                timeout=15,
-                headers={"User-Agent": _USER_AGENT},
-            )
+            resp = ctx.session.head(url, allow_redirects=True, timeout=15)
         except requests.RequestException as exc:
             raise exc
 

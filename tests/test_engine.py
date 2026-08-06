@@ -160,7 +160,7 @@ class TestEvidenceLevel:
     def test_github_liveness_is_live_resource_only(self, stub_sources):
         from ref_checker.model import EvidenceLevel
 
-        stub_sources["github"].check_url = lambda url: (
+        stub_sources["github"].check_url = lambda url, ctx: (
             {"source": "github", "title": None, "authors": [], "year": None,
              "venue": None, "doi": None, "url": url, "external_id": None},
             1.0,
@@ -327,3 +327,30 @@ class TestSourceContextReuse:
 
         assert len(seen_ctxs) == 2
         assert seen_ctxs[0] is not seen_ctxs[1]
+
+    def test_liveness_source_reuses_context_across_references(self, stub_sources):
+        """Part 2 of the SourceContext work: github/url liveness sources get
+        the same reuse-via-shared-contexts-dict behavior as scholarly
+        sources.
+        """
+        seen_ctxs = []
+
+        def _record(urls, ctx):
+            seen_ctxs.append(ctx)
+            return (
+                {"source": "github", "title": None, "authors": [], "year": None,
+                 "venue": None, "doi": None, "url": urls, "external_id": None},
+                1.0,
+                [],
+            )
+
+        stub_sources["github"].check_url = _record
+
+        contexts: dict = {}
+        ref1 = _ref(index=1, github_url="https://github.com/org/repo1")
+        ref2 = _ref(index=2, github_url="https://github.com/org/repo2")
+        engine_mod.lookup_reference(ref1, min_match=0.80, contexts=contexts)
+        engine_mod.lookup_reference(ref2, min_match=0.80, contexts=contexts)
+
+        assert len(seen_ctxs) == 2
+        assert seen_ctxs[0] is seen_ctxs[1]
