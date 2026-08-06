@@ -12,6 +12,7 @@ import threading
 import pytest
 
 from ref_checker import check as check_mod
+from ref_checker import runtime as runtime_mod
 from ref_checker import sidecar as sidecar_mod
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
@@ -52,7 +53,7 @@ def _no_delays(monkeypatch):
         check_mod, "_DEFAULT_DELAYS",
         {k: 0.0 for k in check_mod._DEFAULT_DELAYS},
     )
-    monkeypatch.setattr(check_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
 
 
 @pytest.fixture
@@ -1110,7 +1111,7 @@ class TestRateLimitDiagnostics:
         # Generic (non-RateLimited) retries at short waits should NOT
         # print the visibility line — only long ones and rate-limit ones do.
         monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
-        monkeypatch.setattr(check_mod, "_RETRY_BACKOFF", (1.0, 1.0, 1.0))
+        monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (1.0, 1.0, 1.0))
 
         calls = {"n": 0}
 
