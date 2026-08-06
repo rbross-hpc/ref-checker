@@ -321,6 +321,9 @@ At the end of a run, a query summary is printed to stderr:
 
 ## How it works
 
+For the full design rationale behind each step, see [docs/](docs/) (linked
+from [PLAN.md](PLAN.md)).
+
 1. **Input** — references come from one of two equivalent sources:
    - **PDF**: text is extracted with `pypdf` (falling back to `pdfplumber`).
      Common PDF artifacts are repaired: hyphenated line breaks
