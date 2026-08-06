@@ -815,7 +815,6 @@ def check_references(
         # Not on main thread — signals unavailable. Continue without handler.
         prev_sigint = None
 
-    total = len(refs)
     sidecar_lock = threading.Lock()
 
     def _write_sidecar() -> None:

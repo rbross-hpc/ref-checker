@@ -1,6 +1,5 @@
 """Tests for the per-paper reference extraction cache."""
 import json
-import pytest
 from pathlib import Path
 
 from ref_checker.extract import Reference, write_refs_cache, load_refs_cache

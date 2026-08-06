@@ -1,5 +1,4 @@
 """Tests for source module _summarize and _normalize_doi helpers (no network)."""
-import pytest
 
 
 class TestOpenAlexSummarize:
@@ -31,7 +30,7 @@ class TestOpenAlexSummarize:
         assert s["source"] == "openalex"
 
     def test_doi_normalized(self):
-        from ref_checker.sources.openalex import _summarize, _normalize_doi
+        from ref_checker.sources.openalex import _normalize_doi
         assert _normalize_doi("https://doi.org/10.1/ABC") == "10.1/abc"
         assert _normalize_doi("doi:10.1/X") == "10.1/x"
         assert _normalize_doi(None) is None
@@ -125,7 +124,7 @@ class TestSemanticScholarSummarize:
 class TestArxivParse:
     def test_parse_entry(self):
         import xml.etree.ElementTree as ET
-        from ref_checker.sources.arxiv import _parse_entry, _NS
+        from ref_checker.sources.arxiv import _parse_entry
         xml = """<entry xmlns="http://www.w3.org/2005/Atom">
             <id>http://arxiv.org/abs/1706.03762v5</id>
             <title>Attention Is All You Need</title>

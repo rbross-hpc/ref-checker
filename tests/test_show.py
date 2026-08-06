@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import pytest
 
 from ref_checker import check as check_mod
 from ref_checker import sidecar as sidecar_mod

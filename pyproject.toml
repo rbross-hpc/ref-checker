@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "ref-checker"
-version         = "0.1.0"
+version         = "0.2.0"
 description     = "Verify bibliographic references against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv"
 readme          = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
 
 [project.scripts]
 ref-checker = "ref_checker.cli.main:main"
@@ -29,3 +29,13 @@ include = ["ref_checker*"]
 
 [tool.setuptools.package-data]
 ref_checker = ["skills/reference-checking/**/*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Default rule set (pyflakes + a slice of pycodestyle) minus line-length,
+# since the codebase doesn't currently wrap at 100 cols and enforcing it
+# would produce a large reformatting diff unrelated to catching real bugs.
+select = ["E4", "E7", "E9", "F"]
