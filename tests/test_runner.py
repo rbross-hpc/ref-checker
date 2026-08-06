@@ -1,4 +1,5 @@
-"""Tests for the check-lifecycle: circuit breaker, re-run planning, and shutdown.
+"""Tests for ref_checker.runner.check_references: thread pool, resume/
+sidecar I/O, signal handling, and end-of-run reporting.
 
 All tests monkeypatch the source modules — no network calls are made.
 """
@@ -11,11 +12,12 @@ import threading
 
 import pytest
 
-from ref_checker import check as check_mod
+from ref_checker import runner as runner_mod
 from ref_checker import runtime as runtime_mod
 from ref_checker import sidecar as sidecar_mod
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
+from ref_checker.sources.registry import SCHOLARLY_SOURCE_NAMES, ALL_SOURCE_NAMES
 
 
 def _ref(index=1, title="A Paper", year=2020, doi=None, arxiv_id=None,
@@ -50,8 +52,8 @@ def _summary(title="A Paper", year=2020, doi="10.1/x"):
 def _no_delays(monkeypatch):
     """Zero out per-source delays so tests don't sleep."""
     monkeypatch.setattr(
-        check_mod, "_DEFAULT_DELAYS",
-        {k: 0.0 for k in check_mod._DEFAULT_DELAYS},
+        runner_mod, "_DEFAULT_DELAYS",
+        {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
     )
     monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
 
@@ -85,355 +87,6 @@ def stub_sources(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Circuit breaker
-# --------------------------------------------------------------------------
-
-
-class TestSourceHealth:
-    def test_error_increments_counter(self):
-        h = check_mod.SourceHealth(threshold=3)
-        h.record("openalex", "error")
-        h.record("openalex", "error")
-        assert not h.is_disabled("openalex")
-        h.record("openalex", "error")
-        assert h.is_disabled("openalex")
-
-    def test_hit_resets_counter(self):
-        h = check_mod.SourceHealth(threshold=3)
-        h.record("openalex", "error")
-        h.record("openalex", "error")
-        h.record("openalex", "hit_id")
-        h.record("openalex", "error")
-        h.record("openalex", "error")
-        assert not h.is_disabled("openalex")
-
-    def test_not_found_resets_counter(self):
-        h = check_mod.SourceHealth(threshold=3)
-        h.record("openalex", "error")
-        h.record("openalex", "error")
-        h.record("openalex", "not_found")
-        h.record("openalex", "error")
-        assert not h.is_disabled("openalex")
-
-    def test_all_scholarly_disabled_detects_full_outage(self):
-        h = check_mod.SourceHealth(threshold=1)
-        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
-            h.record(name, "error")
-        assert h.all_scholarly_disabled()
-
-    def test_consecutive_rate_limit_disables_at_threshold(self):
-        h = check_mod.SourceHealth(rate_limit_threshold=3)
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        assert not h.is_disabled("openalex")
-        h.record("openalex", "rate_limited")
-        assert h.is_disabled("openalex")
-
-    def test_rate_limit_counter_resets_on_hit(self):
-        h = check_mod.SourceHealth(rate_limit_threshold=3)
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "hit_id")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        assert not h.is_disabled("openalex")
-
-    def test_rate_limit_counter_resets_on_not_found(self):
-        h = check_mod.SourceHealth(rate_limit_threshold=3)
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "not_found")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        assert not h.is_disabled("openalex")
-
-    def test_rate_limit_does_not_advance_error_counter(self):
-        h = check_mod.SourceHealth(threshold=3, rate_limit_threshold=10)
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "error")
-        h.record("openalex", "error")
-        assert not h.is_disabled("openalex")
-        h.record("openalex", "error")
-        assert h.is_disabled("openalex")
-
-    def test_error_resets_rate_limit_counter(self):
-        h = check_mod.SourceHealth(threshold=10, rate_limit_threshold=3)
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "error")
-        h.record("openalex", "rate_limited")
-        h.record("openalex", "rate_limited")
-        assert not h.is_disabled("openalex")
-
-    def test_should_log_first_rate_limit_returns_true_once(self):
-        h = check_mod.SourceHealth()
-        assert h.should_log_first_rate_limit("openalex") is True
-        assert h.should_log_first_rate_limit("openalex") is False
-        assert h.should_log_first_rate_limit("crossref") is True
-
-
-# --------------------------------------------------------------------------
-# per_source population
-# --------------------------------------------------------------------------
-
-
-class TestPerSource:
-    def test_records_hit_id_and_not_found(self, stub_sources):
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
-        stub_sources["crossref"].get_by_doi = lambda doi: (None, None)
-
-        ref = _ref(doi="10.1/test")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.per_source["openalex"]["status"] == "hit_id"
-        assert result.per_source["openalex"]["queried_by"] == ["doi"]
-        assert result.per_source["openalex"]["summary"]["doi"] == "10.1/test"
-        # crossref should not have been called — we got an ID hit first
-        assert "crossref" not in result.per_source
-        assert result.id_confirmed
-        assert result.best_source == "openalex"
-
-    def test_records_error_when_source_raises(self, stub_sources):
-        def _boom(*a, **kw):
-            raise RuntimeError("network down")
-        stub_sources["openalex"].get_by_doi = _boom
-
-        ref = _ref(doi="10.1/test")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.per_source["openalex"]["status"] == "error"
-        assert "openalex" in result.exhausted_sources
-
-    def test_records_rate_limited_when_source_exhausts_on_rate_limit(self, stub_sources):
-        from ref_checker.errors import RateLimited
-
-        def _always_rate_limited(*a, **kw):
-            raise RateLimited(retry_after=0.0)
-        stub_sources["openalex"].get_by_doi = _always_rate_limited
-        stub_sources["openalex"].search_by_title = _always_rate_limited
-
-        ref = _ref(doi="10.1/test")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.per_source["openalex"]["status"] == "rate_limited"
-        # rate_limited counts toward exhausted_sources exactly like error —
-        # both mean "we did not get real information", just different cause.
-        assert "openalex" in result.exhausted_sources
-
-    def test_disabled_source_marked_and_skipped(self, stub_sources):
-        def _boom(*a, **kw):
-            raise RuntimeError("boom")
-        stub_sources["openalex"].get_by_doi = _boom
-
-        health = check_mod.SourceHealth(threshold=1)
-        health._disabled.add("openalex")
-
-        ref = _ref(doi="10.1/test")
-        result = check_mod.lookup_reference(ref, min_match=0.80, health=health)
-
-        assert result.per_source["openalex"]["status"] == "disabled"
-
-
-# --------------------------------------------------------------------------
-# EvidenceLevel computation (additive alongside OK/CLOSEST/NO MATCH status)
-# --------------------------------------------------------------------------
-
-
-class TestEvidenceLevel:
-    def test_doi_hit_is_confirmed_identifier(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
-
-        ref = _ref(doi="10.1/test")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.CONFIRMED_IDENTIFIER
-
-    def test_github_liveness_is_live_resource_only(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        stub_sources["github"].check_url = lambda url: (
-            {"source": "github", "title": None, "authors": [], "year": None,
-             "venue": None, "doi": None, "url": url, "external_id": None},
-            1.0,
-            [],
-        )
-
-        ref = _ref(github_url="https://github.com/org/repo")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.LIVE_RESOURCE_ONLY
-
-    def test_strong_title_match_is_strong_metadata_match(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.95)
-
-        ref = _ref(title="A Paper")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.STRONG_METADATA_MATCH
-
-    def test_weak_title_match_is_weak_or_ambiguous(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        stub_sources["openalex"].search_by_title = lambda title: (_summary(doi=None), 0.82)
-
-        ref = _ref(title="A Paper")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.WEAK_OR_AMBIGUOUS_MATCH
-
-    def test_no_match_at_all_is_not_found(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        ref = _ref(title="Totally Unmatched Paper")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.NOT_FOUND
-
-    def test_exhausted_sources_with_no_match_is_incomplete(self, stub_sources):
-        from ref_checker.model import EvidenceLevel
-
-        def _boom(*a, **kw):
-            raise RuntimeError("network down")
-        stub_sources["openalex"].get_by_doi = _boom
-        stub_sources["openalex"].search_by_title = _boom
-
-        ref = _ref(doi="10.1/test", title="Some Title")
-        result = check_mod.lookup_reference(ref, min_match=0.80)
-
-        assert result.evidence == EvidenceLevel.INCOMPLETE
-
-
-# --------------------------------------------------------------------------
-# _plan_ref_work
-# --------------------------------------------------------------------------
-
-
-class TestPlanRefWork:
-    def test_fresh_ref_queries_all_sources(self):
-        targets = check_mod._plan_ref_work(None, None, retry_closest=False, retry_errored=True)
-        assert targets == set(check_mod._ALL_SOURCE_NAMES)
-
-    def test_ok_ref_returns_none(self):
-        r = LookupResult(id_confirmed=True, display_score=0.99, best_source="openalex")
-        r.per_source["openalex"] = {"status": "hit_id", "queried_by": ["doi"],
-                                    "score": 1.0, "summary": {}}
-        assert check_mod._plan_ref_work(r, "OK", retry_closest=False, retry_errored=True) is None
-
-    def test_closest_returns_none_by_default(self):
-        r = LookupResult(display_score=0.85, best_source="crossref")
-        r.per_source["crossref"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.85, "summary": {}}
-        assert check_mod._plan_ref_work(r, "CLOSEST", retry_closest=False, retry_errored=True) is None
-
-    def test_closest_returns_untried_when_flagged(self):
-        r = LookupResult(display_score=0.85)
-        r.per_source["crossref"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.85, "summary": {}}
-        r.per_source["openalex"] = {"status": "not_found", "queried_by": ["title"],
-                                    "score": None, "summary": None}
-        targets = check_mod._plan_ref_work(r, "CLOSEST", retry_closest=True, retry_errored=True)
-        # openalex was tried (not_found) so not in targets; crossref has a result;
-        # everything else missing → in targets
-        assert "openalex" not in targets
-        assert "crossref" not in targets
-        assert "dblp" in targets
-
-    def test_no_match_retries_untried_and_errored(self):
-        r = LookupResult(display_score=0.30)
-        r.per_source["openalex"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.30, "summary": {}}
-        r.per_source["crossref"] = {"status": "error", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
-        r.per_source["dblp"] = {"status": "not_found", "queried_by": ["title"],
-                                "score": None, "summary": None}
-        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
-        assert "openalex" not in targets    # already got a title hit
-        assert "crossref" in targets        # errored → retry
-        assert "dblp" not in targets        # not_found is a real answer
-        assert "semanticscholar" in targets # never tried
-        assert "arxiv" in targets
-
-    def test_errored_not_retried_when_flag_off(self):
-        r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "error", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
-        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
-        assert "crossref" not in targets
-
-    def test_disabled_always_retried(self):
-        r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "disabled", "queried_by": [],
-                                    "score": None, "summary": None,
-                                    "note": "session circuit breaker"}
-        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
-        assert "crossref" in targets
-
-    def test_rate_limited_retried_like_error(self):
-        r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
-        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
-        assert "crossref" in targets
-
-    def test_rate_limited_not_retried_when_flag_off(self):
-        r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
-        targets = check_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
-        assert "crossref" not in targets
-
-
-# --------------------------------------------------------------------------
-# sources_to_query filtering
-# --------------------------------------------------------------------------
-
-
-class TestSourcesToQuery:
-    def test_only_named_sources_are_queried(self, stub_sources, monkeypatch):
-        calls = {"openalex": 0, "crossref": 0, "semanticscholar": 0}
-
-        def make_stub(name):
-            def _stub(*a, **kw):
-                calls[name] += 1
-                return None, None
-            return _stub
-
-        for name in calls:
-            monkeypatch.setattr(stub_sources[name], "get_by_doi", make_stub(name))
-
-        ref = _ref(doi="10.1/x")
-        check_mod.lookup_reference(
-            ref, min_match=0.80,
-            sources_to_query={"crossref"},
-        )
-
-        assert calls["openalex"] == 0
-        assert calls["crossref"] == 1
-        assert calls["semanticscholar"] == 0
-
-    def test_prior_per_source_preserved(self, stub_sources):
-        prior = LookupResult()
-        prior.per_source["openalex"] = {"status": "not_found", "queried_by": ["title"],
-                                        "score": None, "summary": None}
-
-        stub_sources["crossref"].search_by_title = lambda t: (_summary(title=t), 0.95)
-
-        ref = _ref(title="A Paper")
-        result = check_mod.lookup_reference(
-            ref, min_match=0.80,
-            sources_to_query={"crossref"},
-            prior_result=prior,
-        )
-        assert result.per_source["openalex"]["status"] == "not_found"
-        assert result.per_source["crossref"]["status"] == "hit_title"
-
-
-# --------------------------------------------------------------------------
 # End-to-end: check_references
 # --------------------------------------------------------------------------
 
@@ -444,7 +97,7 @@ class TestCheckReferences:
         refs = [_ref(index=1, doi="10.1/a"), _ref(index=2, doi="10.1/b")]
         sidecar = tmp_path / "results.json"
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sidecar, pdf_name="test.pdf",
         )
         assert reason is None
@@ -457,7 +110,7 @@ class TestCheckReferences:
         def _boom(*a, **kw):
             raise RuntimeError("service down")
 
-        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
+        for name in SCHOLARLY_SOURCE_NAMES:
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -466,7 +119,7 @@ class TestCheckReferences:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sidecar = tmp_path / "results.json"
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sidecar, pdf_name="test.pdf",
             source_error_threshold=1,
         )
@@ -488,7 +141,7 @@ class TestCheckReferences:
         }
         sidecar_mod.write(sidecar_path, "test.pdf", refs, {1: prior_result}, 0.80)
 
-        calls = {name: 0 for name in check_mod._ALL_SOURCE_NAMES}
+        calls = {name: 0 for name in ALL_SOURCE_NAMES}
 
         def track(name, orig):
             def _wrapped(*a, **kw):
@@ -504,7 +157,7 @@ class TestCheckReferences:
         stub_sources["semanticscholar"].get_by_doi = track("semanticscholar", None)
         stub_sources["arxiv"].get_by_doi = track("arxiv", None)
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sidecar_path, pdf_name="test.pdf",
             resume=True,
         )
@@ -541,7 +194,7 @@ class TestCheckReferences:
 
         stub_sources["openalex"].get_by_doi = _maybe_signal
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sidecar, pdf_name="test.pdf",
         )
         assert reason == "keyboard_interrupt"
@@ -551,53 +204,6 @@ class TestCheckReferences:
         # We should have at least the first two refs saved (completed before signal).
         assert "1" in data["references"]
         assert "2" in data["references"]
-
-
-# --------------------------------------------------------------------------
-# recompute_best
-# --------------------------------------------------------------------------
-
-
-class TestRecomputeBest:
-    def test_id_hit_wins_over_title_hit(self):
-        ref = _ref(title="A Paper", year=2020)
-        r = LookupResult()
-        r.record_source("crossref", "hit_title", queried_by="title",
-                        score=0.95, summary=_summary(title="A Paper", year=2020))
-        r.record_source("openalex", "hit_id", queried_by="doi",
-                        score=1.0, summary=_summary(title="A Paper", doi="10.1/x"))
-        r.recompute_best(ref, 0.80)
-        assert r.id_confirmed
-        assert r.best_source == "openalex"
-
-    def test_year_mismatch_note(self):
-        ref = _ref(title="A Paper", year=2020)
-        r = LookupResult()
-        r.record_source("openalex", "hit_id", queried_by="doi",
-                        score=1.0, summary=_summary(title="A Paper", year=2021))
-        r.recompute_best(ref, 0.80)
-        assert r.id_confirmed
-        assert r.year_mismatch_note == "ref year=2020, match year=2021"
-        assert any("year mismatch" in n for n in r.id_notes)
-
-    def test_title_hit_year_penalty_applied(self):
-        ref = _ref(title="A Paper", year=2020)
-        r = LookupResult()
-        r.record_source("crossref", "hit_title", queried_by="title",
-                        score=0.90, summary=_summary(title="A Paper", year=2019))
-        r.recompute_best(ref, 0.80)
-        # 0.90 - 0.10 penalty = 0.80
-        assert r.display_score == pytest.approx(0.80)
-        assert r.year_mismatch_note is not None
-
-    def test_no_hits_leaves_fields_none(self):
-        ref = _ref()
-        r = LookupResult()
-        r.record_source("openalex", "not_found", queried_by="title")
-        r.record_source("crossref", "error", queried_by="doi")
-        r.recompute_best(ref, 0.80)
-        assert r.best_source is None
-        assert r.display_score is None
 
 
 # --------------------------------------------------------------------------
@@ -613,11 +219,11 @@ class TestConcurrency:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
 
         sc1 = tmp_path / "seq.json"
-        r1 = check_mod.check_references(refs, sidecar=sc1, pdf_name="p.pdf", jobs=1)
+        r1 = runner_mod.check_references(refs, sidecar=sc1, pdf_name="p.pdf", jobs=1)
         assert r1 is None
 
         sc3 = tmp_path / "par.json"
-        r3 = check_mod.check_references(refs, sidecar=sc3, pdf_name="p.pdf", jobs=3)
+        r3 = runner_mod.check_references(refs, sidecar=sc3, pdf_name="p.pdf", jobs=3)
         assert r3 is None
 
         d1 = json.loads(sc1.read_text())
@@ -648,7 +254,7 @@ class TestConcurrency:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
         out = capsys.readouterr().out
         # stdout should still be in ref-index order regardless of completion order.
         idxs = []
@@ -675,7 +281,7 @@ class TestConcurrency:
         # only contains formatted blocks (never interleaved with per-completion
         # progress lines which go to stderr). All progress goes to stderr, so
         # stdout must contain ONLY the formatted blocks.
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
         cap = capsys.readouterr()
         for line in cap.out.splitlines():
             assert not line.startswith("[ref-checker]"), (
@@ -691,7 +297,7 @@ class TestConcurrency:
                 errors_seen.append(1)
             raise RuntimeError("service down")
 
-        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
+        for name in SCHOLARLY_SOURCE_NAMES:
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -700,37 +306,12 @@ class TestConcurrency:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 10)]
         sc = tmp_path / "results.json"
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf",
             source_error_threshold=1, jobs=3,
         )
         assert reason == "all_scholarly_sources_disabled"
         assert sc.exists()
-
-    def test_rate_limiter_strict_spacing_under_contention(self):
-        import time
-
-        rl = check_mod._RateLimiter({"openalex": 0.05})
-
-        timestamps: list[float] = []
-        lock = threading.Lock()
-
-        def worker():
-            rl.wait("openalex")
-            with lock:
-                timestamps.append(time.monotonic())
-
-        threads = [threading.Thread(target=worker) for _ in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        timestamps.sort()
-        # Consecutive calls should be spaced at least ~delay apart.
-        for a, b in zip(timestamps, timestamps[1:]):
-            # small tolerance for scheduling jitter
-            assert (b - a) >= 0.04, f"spacing {b - a:.4f} < 0.04"
 
     def test_shutdown_via_signal_flushes_sidecar_concurrent(self, stub_sources, tmp_path):
         """Simulate SIGINT partway through a concurrent run; sidecar must be valid."""
@@ -755,7 +336,7 @@ class TestConcurrency:
         stub_sources["openalex"].get_by_doi = _maybe_signal
 
         # Use jobs=1 for deterministic signal-timing under test.
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
         assert reason == "keyboard_interrupt"
@@ -781,7 +362,7 @@ class TestConcurrency:
         sc = tmp_path / "results.json"
         sidecar_mod.write(sc, "p.pdf", refs, {1: prior, 2: prior}, 0.80)
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=3, resume=True,
         )
         assert reason is None
@@ -823,7 +404,7 @@ class TestBoundedSubmission:
 
         t = threading.Thread(target=_releaser)
         t.start()
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=jobs)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=jobs)
         t.join()
 
         assert in_flight["max"] <= window, (
@@ -839,7 +420,7 @@ class TestBoundedSubmission:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 5)]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
         err = capsys.readouterr().err
 
         assert "started ref #" not in err
@@ -863,7 +444,7 @@ class TestBoundedSubmission:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf",
             source_error_threshold=1, jobs=1,
         )
@@ -890,7 +471,7 @@ class TestBoundedSubmission:
             waits.append(timeout)
             return False
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", _record_wait)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", _record_wait)
 
         calls = {"n": 0}
 
@@ -905,7 +486,7 @@ class TestBoundedSubmission:
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
         retry_waits = [w for w in waits if 0.2 <= w <= 0.3]
         assert len(retry_waits) >= 2, f"expected 2 retry_after=0.25 waits, got {waits!r}"
@@ -923,7 +504,7 @@ class TestBoundedSubmission:
                 raise RateLimited(retry_after=0.0)
             raise RuntimeError("real 500")
 
-        for name in check_mod._SCHOLARLY_SOURCE_NAMES:
+        for name in SCHOLARLY_SOURCE_NAMES:
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -932,7 +513,7 @@ class TestBoundedSubmission:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sc = tmp_path / "results.json"
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf",
             source_error_threshold=1, jobs=1,
         )
@@ -957,7 +538,7 @@ class TestBoundedSubmission:
 
         monkeypatch.setattr(builtins, "print", _bp_print)
 
-        reason = check_mod.check_references(
+        reason = runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=3,
         )
 
@@ -966,37 +547,6 @@ class TestBoundedSubmission:
         data = json.loads(sc.read_text())
         assert data["schema_version"] == 4
         assert "1" in data["references"]
-
-
-# --------------------------------------------------------------------------
-# _format_duration
-# --------------------------------------------------------------------------
-
-
-class TestFormatDuration:
-    def test_seconds(self):
-        assert check_mod._format_duration(12.3) == "12.3s"
-
-    def test_zero(self):
-        assert check_mod._format_duration(0.0) == "0.0s"
-
-    def test_negative_clamped(self):
-        assert check_mod._format_duration(-5.0) == "0.0s"
-
-    def test_just_under_minute(self):
-        assert check_mod._format_duration(59.9) == "59.9s"
-
-    def test_minutes(self):
-        assert check_mod._format_duration(222.0) == "3m 42s"
-
-    def test_minute_boundary(self):
-        assert check_mod._format_duration(60.0) == "1m 00s"
-
-    def test_hours(self):
-        assert check_mod._format_duration(15092.0) == "4h 11m"
-
-    def test_hour_boundary(self):
-        assert check_mod._format_duration(3600.0) == "1h 00m"
 
 
 # --------------------------------------------------------------------------
@@ -1022,7 +572,7 @@ class TestQuotaAndVisibility:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
 
@@ -1043,20 +593,20 @@ class TestQuotaAndVisibility:
     ):
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
         def _at_threshold(*a, **kw):
             calls["n"] += 1
-            raise RateLimited(retry_after=check_mod._QUOTA_EXHAUSTED_THRESHOLD)
+            raise RateLimited(retry_after=runtime_mod._QUOTA_EXHAUSTED_THRESHOLD)
 
         stub_sources["openalex"].get_by_doi = _at_threshold
         stub_sources["openalex"].search_by_title = _at_threshold
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
 
@@ -1071,14 +621,14 @@ class TestQuotaAndVisibility:
 
         def _above_threshold(*a, **kw):
             calls["n"] += 1
-            raise RateLimited(retry_after=check_mod._QUOTA_EXHAUSTED_THRESHOLD + 1.0)
+            raise RateLimited(retry_after=runtime_mod._QUOTA_EXHAUSTED_THRESHOLD + 1.0)
 
         stub_sources["openalex"].get_by_doi = _above_threshold
         stub_sources["openalex"].search_by_title = _above_threshold
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
 
@@ -1089,7 +639,7 @@ class TestQuotaAndVisibility:
     ):
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
@@ -1103,7 +653,7 @@ class TestQuotaAndVisibility:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
         err = capsys.readouterr().err
@@ -1118,7 +668,7 @@ class TestQuotaAndVisibility:
         # can see the source's behavior even under brief throttling.
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
@@ -1132,7 +682,7 @@ class TestQuotaAndVisibility:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
         err = capsys.readouterr().err
@@ -1148,7 +698,7 @@ class TestQuotaAndVisibility:
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 3)]
         sc = tmp_path / "results.json"
 
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "[ref-checker] Elapsed:" in err
 
@@ -1164,7 +714,7 @@ class TestRateLimitDiagnostics:
     ):
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
@@ -1178,7 +728,7 @@ class TestRateLimitDiagnostics:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         first_lines = [ln for ln in err.splitlines() if "first 429 seen" in ln]
         assert len(first_lines) == 1
@@ -1190,7 +740,7 @@ class TestRateLimitDiagnostics:
     ):
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
@@ -1204,7 +754,7 @@ class TestRateLimitDiagnostics:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "openalex: first 429 seen (Retry-After=<none>)" in err
 
@@ -1213,7 +763,7 @@ class TestRateLimitDiagnostics:
     ):
         # Generic (non-RateLimited) retries at short waits should NOT
         # print the visibility line — only long ones and rate-limit ones do.
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
         monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (1.0, 1.0, 1.0))
 
         calls = {"n": 0}
@@ -1228,7 +778,7 @@ class TestRateLimitDiagnostics:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "openalex: waiting" not in err
 
@@ -1237,7 +787,7 @@ class TestRateLimitDiagnostics:
     ):
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         calls = {"n": 0}
 
@@ -1251,7 +801,7 @@ class TestRateLimitDiagnostics:
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         assert "Retry-After=120s" in err
         assert "capped at 60s" in err
@@ -1275,7 +825,7 @@ class TestStatsByMode:
 
         refs = [_ref(index=1, doi="10.1/x1"), _ref(index=2, doi=None, title="T2")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         # Look for the openalex summary line and confirm both modes appear.
         oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
@@ -1293,7 +843,7 @@ class TestStatsByMode:
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
         assert "(3 doi)" in oa_line
@@ -1304,7 +854,7 @@ class TestStatsByMode:
         # openalex gets both a successful DOI query AND an exhausted
         # title query, forcing multi-mode breakdown on the exhausted line.
         from ref_checker.errors import RateLimited
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
@@ -1320,7 +870,7 @@ class TestStatsByMode:
             _ref(index=2, doi=None, title="A title only ref"),
         ]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
         assert "doi" in oa_line
@@ -1340,50 +890,50 @@ class TestSSUnauthDelay:
         monkeypatch.delenv("SEMANTICSCHOLAR_API_KEY", raising=False)
         # Restore a realistic (non-zero) default so the override kicks in.
         monkeypatch.setattr(
-            check_mod, "_DEFAULT_DELAYS",
-            {**{k: 0.0 for k in check_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+            runner_mod, "_DEFAULT_DELAYS",
+            {**{k: 0.0 for k in runner_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
         )
         captured: dict = {}
-        real_init = check_mod._RateLimiter.__init__
+        real_init = runtime_mod._RateLimiter.__init__
 
         def _capture_init(self, delays, shutdown=None):
             captured["delays"] = dict(delays)
             real_init(self, delays, shutdown=shutdown)
 
-        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+        monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
-        assert captured["delays"]["semanticscholar"] == check_mod._SS_UNAUTH_DELAY
+        assert captured["delays"]["semanticscholar"] == runner_mod._SS_UNAUTH_DELAY
 
     def test_ss_delay_preserved_when_key_set(
         self, stub_sources, tmp_path, monkeypatch,
     ):
         monkeypatch.setenv("SEMANTICSCHOLAR_API_KEY", "sk-test")
         monkeypatch.setattr(
-            check_mod, "_DEFAULT_DELAYS",
-            {**{k: 0.0 for k in check_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+            runner_mod, "_DEFAULT_DELAYS",
+            {**{k: 0.0 for k in runner_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
         )
         captured: dict = {}
-        real_init = check_mod._RateLimiter.__init__
+        real_init = runtime_mod._RateLimiter.__init__
 
         def _capture_init(self, delays, shutdown=None):
             captured["delays"] = dict(delays)
             real_init(self, delays, shutdown=shutdown)
 
-        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+        monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
         assert captured["delays"]["semanticscholar"] == 8.0
 
@@ -1393,20 +943,20 @@ class TestSSUnauthDelay:
         # If tests explicitly zero out delays, the override must not fire.
         monkeypatch.delenv("SEMANTICSCHOLAR_API_KEY", raising=False)
         captured: dict = {}
-        real_init = check_mod._RateLimiter.__init__
+        real_init = runtime_mod._RateLimiter.__init__
 
         def _capture_init(self, delays, shutdown=None):
             captured["delays"] = dict(delays)
             real_init(self, delays, shutdown=shutdown)
 
-        monkeypatch.setattr(check_mod._RateLimiter, "__init__", _capture_init)
+        monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
             lambda doi: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
         assert captured["delays"]["semanticscholar"] == 0.0
 
@@ -1425,7 +975,7 @@ class TestDisabledDuringFlight:
         # without calling the source function again.
         from ref_checker.errors import RateLimited
 
-        monkeypatch.setattr(check_mod._Shutdown, "wait", lambda self, t: False)
+        monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         call_count = {"n": 0}
         health_ref: dict = {}
@@ -1443,17 +993,17 @@ class TestDisabledDuringFlight:
 
         stub_sources["openalex"].get_by_doi = _rl_then_check
 
-        real_init = check_mod.SourceHealth.__init__
+        real_init = runtime_mod.SourceHealth.__init__
 
         def _capture(self, *a, **kw):
             real_init(self, *a, **kw)
             health_ref["h"] = self
 
-        monkeypatch.setattr(check_mod.SourceHealth, "__init__", _capture)
+        monkeypatch.setattr(runtime_mod.SourceHealth, "__init__", _capture)
 
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
-        check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
 
         # Only the first attempt actually invoked the source fn; the retry
         # iteration short-circuited on is_disabled.
@@ -1482,7 +1032,7 @@ class TestDisabledDuringFlight:
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sc = tmp_path / "results.json"
-        check_mod.check_references(
+        runner_mod.check_references(
             refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
         )
 
@@ -1490,7 +1040,7 @@ class TestDisabledDuringFlight:
         # each ref = 1 rate-limit exhaustion cycle = 3 calls to the source
         # fn. Once disabled, subsequent refs must short-circuit without
         # calling the source at all.
-        assert openalex_calls["n"] <= 3 * check_mod.SourceHealth.RATE_LIMIT_THRESHOLD, (
+        assert openalex_calls["n"] <= 3 * runtime_mod.SourceHealth.RATE_LIMIT_THRESHOLD, (
             f"openalex called {openalex_calls['n']} times; should short-circuit "
-            f"after {check_mod.SourceHealth.RATE_LIMIT_THRESHOLD} exhaustion cycles"
+            f"after {runtime_mod.SourceHealth.RATE_LIMIT_THRESHOLD} exhaustion cycles"
         )

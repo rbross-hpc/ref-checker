@@ -63,6 +63,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `SIDECAR_SCHEMA_VERSION` bumped `3` → `4`. Sidecars written by v3 (and all
   earlier versions) are hard-rejected on load with a WARNING, exactly like
   the v1/v2 rejection already in place — no silent partial-upgrade.
+- **`check.py` split into `engine.py` and `runner.py`.** `check.py` had
+  accumulated two large, only-loosely-coupled responsibilities:
+  `lookup_reference` (assess one reference against all sources) and
+  `check_references` (thread pool, resume/sidecar I/O, signal handling,
+  end-of-run reporting). These are now `engine.py` and `runner.py`
+  respectively; `check.py` is a thin backward-compatible re-export shim
+  (~50 lines) so existing callers (`cli/main.py`) and any code reaching
+  into `check.<name>` keep working unchanged. No behavior change.
+- **Tests reorganized to match**: the 1496-line `test_check_lifecycle.py`
+  (15 test classes) has been split into five focused files —
+  `test_runtime.py` (circuit breaker, duration formatting, rate limiter),
+  `test_planner.py` (smart-rerun source selection), `test_results.py`
+  (`LookupResult.recompute_best()` — a pre-existing misplacement, fixed
+  opportunistically), `test_engine.py` (`lookup_reference`), and
+  `test_runner.py` (`check_references` end-to-end). Same 78 tests,
+  redistributed rather than rewritten; a misplaced `_RateLimiter` unit
+  test was moved out of a `TestConcurrency` class it didn't belong in.
+  Fixture-scoped delay/backoff monkeypatches (`_DEFAULT_DELAYS`,
+  `_RETRY_BACKOFF`) now target the module that actually reads them
+  (`engine_mod`/`runner_mod`/`runtime_mod`) rather than the `check_mod`
+  re-export — the same fix pattern used when `runtime.py` was first
+  extracted.
 
 ## [0.2.0] - 2026-08-06
 
