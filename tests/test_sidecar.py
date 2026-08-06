@@ -1,7 +1,6 @@
 """Tests for the results sidecar module."""
 import json
 import pytest
-from pathlib import Path
 
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult

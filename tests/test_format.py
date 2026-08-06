@@ -1,5 +1,4 @@
 """Tests for output formatting functions."""
-import pytest
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
 from ref_checker.format import (

@@ -421,7 +421,6 @@ class TestCheckReferences:
         sidecar = tmp_path / "results.json"
 
         signalled = {"done": False}
-        original_check_url = stub_sources["github"].check_url
 
         # Send SIGINT to ourselves during the 3rd ref's lookup by hooking one
         # of the stubbed calls. openalex.get_by_doi is called for each ref;
@@ -783,8 +782,6 @@ class TestBoundedSubmission:
 
         waits: list[float] = []
 
-        real_wait = check_mod._Shutdown.wait
-
         def _record_wait(self, timeout):
             waits.append(timeout)
             return False
@@ -1079,7 +1076,7 @@ class TestRateLimitDiagnostics:
         sc = tmp_path / "results.json"
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
-        first_lines = [l for l in err.splitlines() if "first 429 seen" in l]
+        first_lines = [ln for ln in err.splitlines() if "first 429 seen" in ln]
         assert len(first_lines) == 1
         assert "Retry-After=5s" in first_lines[0]
         assert "openalex" in first_lines[0]
@@ -1177,7 +1174,7 @@ class TestStatsByMode:
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
         # Look for the openalex summary line and confirm both modes appear.
-        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
         assert "doi" in oa_line
         assert "title" in oa_line
 
@@ -1194,7 +1191,7 @@ class TestStatsByMode:
         sc = tmp_path / "results.json"
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
-        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
         assert "(3 doi)" in oa_line
 
     def test_exhausted_by_mode_shown_with_mixed_modes(
@@ -1221,7 +1218,7 @@ class TestStatsByMode:
         sc = tmp_path / "results.json"
         check_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
         err = capsys.readouterr().err
-        oa_line = next(l for l in err.splitlines() if "openalex " in l)
+        oa_line = next(ln for ln in err.splitlines() if "openalex " in ln)
         assert "doi" in oa_line
         assert "title" in oa_line
         assert "exhausted" in oa_line

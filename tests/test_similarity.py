@@ -1,5 +1,4 @@
 """Tests for title_ratio similarity function."""
-import pytest
 from ref_checker.similarity import title_ratio
 
 

@@ -27,7 +27,6 @@ def _parse_entry(entry: ET.Element) -> dict[str, Any]:
     title = (entry.findtext("atom:title", "", _NS) or "").strip().replace("\n", " ")
     published = entry.findtext("atom:published", "", _NS) or ""
     entry_id = entry.findtext("atom:id", "", _NS) or ""
-    abstract = (entry.findtext("atom:summary", "", _NS) or "").strip().replace("\n", " ")
     authors = [
         a.findtext("atom:name", "", _NS) or ""
         for a in entry.findall("atom:author", _NS)

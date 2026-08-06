@@ -112,7 +112,7 @@ def format_result(
 
     elif s and effective >= min_match:
         lines.append(f"    {_ORANGE}CLOSEST{_RESET} {score_str}{src_tag}{osti_suffix}")
-        lines.append(f"        Closest candidate across services:")
+        lines.append("        Closest candidate across services:")
         citation = _format_citation(
             s.get("authors") or [],
             s.get("title"),
@@ -129,7 +129,7 @@ def format_result(
     else:
         lines.append(f"    {_RED}NO MATCH{_RESET} {score_str}{src_tag}{osti_suffix}")
         if s:
-            lines.append(f"        Closest candidate across services:")
+            lines.append("        Closest candidate across services:")
             citation = _format_citation(
                 s.get("authors") or [],
                 s.get("title"),
