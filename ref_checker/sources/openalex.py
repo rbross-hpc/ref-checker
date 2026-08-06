@@ -8,10 +8,13 @@ from typing import Any
 
 import requests
 
+from ..model import QueryKind
 from ..similarity import title_ratio
 from ._http import raise_for_rate_limit
 
 SOURCE_NAME = "openalex"
+DEFAULT_DELAY = 2.0
+SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.TITLE})
 
 _BASE = "https://api.openalex.org/works"
 _WARNED_MAILTO = False
