@@ -160,7 +160,7 @@ class TestShowSidecar:
         sc = tmp_path / "results.json"
         # Manually write sidecar with ref #2 having result=None.
         data = {
-            "schema_version": 3,
+            "schema_version": 4,
             "pdf": "p.pdf",
             "refs_hash": "deadbeef",
             "references": {

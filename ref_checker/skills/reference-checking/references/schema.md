@@ -31,7 +31,7 @@ improves lookup accuracy.
 
 | Field | Type | Notes |
 |---|---|---|
-| `index` | integer | 1-based position in the reference list. Defaults to 0 if omitted; sequenced from list order. |
+| `index` | integer | 1-based position in the reference list. If omitted, auto-assigned from the entry's position in the list. Duplicate explicit indices are rejected. |
 | `raw` | string | Full reference text exactly as it appears in the source, excluding any leading citation label such as `[1]`, `1.`, or `(1)`. Used for display only. |
 | `title` | string \| null | **Primary lookup key.** Include whenever possible. |
 | `authors` | array of strings | Each entry is one author's full name in natural order, e.g. `"Bernhard Scholkopf"`. Use `[]` for corporate or organizational authors (e.g. `"IBM"`, `"scikit-learn developers"`) or when no authors are present. |
