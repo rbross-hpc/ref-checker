@@ -9,7 +9,8 @@ import requests
 from ..errors import RateLimited
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit
+from .base import SourceContext
 
 SOURCE_NAME = "dblp"
 DEFAULT_DELAY = 1.0
@@ -22,10 +23,9 @@ _BASES = [
 _USER_AGENT = "ref-checker/0.1"
 
 
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({"User-Agent": _USER_AGENT})
-    return s
+def build_context() -> SourceContext:
+    """Build the DBLP :class:`SourceContext` once per run. User-Agent only."""
+    return SourceContext(session=build_session(_USER_AGENT))
 
 
 def _normalize_authors(authors_field: Any) -> list[str]:
@@ -78,12 +78,14 @@ def _summarize(info: dict) -> dict[str, Any]:
     }
 
 
-def search_by_title(title: str) -> tuple[dict | None, float | None]:
+def search_by_title(
+    title: str, ctx: SourceContext
+) -> tuple[dict | None, float | None]:
     params: dict[str, Any] = {"q": title, "format": "json", "h": 5}
     last_exc: Exception | None = None
     for base in _BASES:
         try:
-            resp = _session().get(base, params=params, timeout=30)
+            resp = ctx.session.get(base, params=params, timeout=30)
             if resp.status_code in (404, 410):
                 return None, None
             if resp.status_code == 503:

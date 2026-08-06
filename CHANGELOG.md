@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Shared `SourceContext` (session pooling) for scholarly sources**:
+  `openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, and `arxiv`
+  each gain a `build_context() -> SourceContext` function, and every
+  lookup function (`get_by_doi`, `get_by_arxiv_id`, `search_by_title`) now
+  takes a mandatory trailing `ctx: SourceContext` parameter. `SourceContext`
+  is a small dataclass holding just `session: requests.Session` and
+  `credentials: dict[str, str]` — rate limiting and retry stay exactly
+  where they were (`runtime.py`/`engine.py`), a deliberate departure from
+  the literal shape suggested by the external assessment. `runner.py`
+  builds one context per scholarly source, once per `check_references()`
+  run (via `sources/registry.py:build_all_contexts()`), and threads it
+  through `engine.py:lookup_reference()` for every reference — so a whole
+  run reuses one `requests.Session` (and its connection pool) per source,
+  instead of every HTTP call opening a fresh one via the old per-call
+  `_session()` helpers. `cli/main.py`'s single-shot `ref-checker lookup
+  <source>` builds one throwaway context before dispatching. Semantic
+  Scholar's API key, previously read fresh from the environment on every
+  call via `_headers()`, is now read once into `ctx.credentials` at
+  context-build time. See `docs/source-adapter-contract.md`'s "Shared
+  SourceContext" section and `PLAN.md`. Liveness sources (`github`, `url`)
+  are follow-up work — see `BACKLOG.md`.
 - `ref_checker.sources.base`: `ScholarlySource` / `LivenessSource`
   `typing.Protocol` definitions formalizing the source adapter contract,
   plus a shared `FN_BY_KIND` mapping (`QueryKind` -> conventional function

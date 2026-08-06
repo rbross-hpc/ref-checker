@@ -27,14 +27,42 @@ Every scholarly source module must declare:
 
 Liveness sources (``github``, ``url``) implement ``check_url`` instead and
 have no ``SUPPORTED_QUERY_KINDS``.
+
+Every source function (scholarly and liveness alike) also takes a mandatory
+trailing ``ctx: SourceContext`` parameter — see that class's docstring.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
+
+import requests
 
 from ..model import QueryKind
 
-__all__ = ["ScholarlySource", "LivenessSource", "FN_BY_KIND"]
+__all__ = ["ScholarlySource", "LivenessSource", "FN_BY_KIND", "SourceContext"]
+
+
+@dataclass
+class SourceContext:
+    """Per-source session and credentials, built once per ``check_references()``
+    run and threaded through every call to that source for the whole run.
+
+    Deliberately holds *only* session + credentials. Rate limiting
+    (``_RateLimiter``) and retry (``_retry``) stay in ``runtime.py``, applied
+    by ``engine.py``'s ``call()``/``call_liveness()`` around the source call
+    — folding them in here would blur an already-correct separation of
+    concerns between "how to talk to this source" (this class) and "how
+    often/how resiliently to talk to any source" (the engine).
+
+    Building one context per run (rather than per-reference or per-call) is
+    what actually gets a connection-pooling benefit out of ``session`` —
+    every reference in the run reuses the same underlying connection(s) to
+    a given source.
+    """
+
+    session: requests.Session
+    credentials: dict[str, str] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -50,7 +78,7 @@ class LivenessSource(Protocol):
     DEFAULT_DELAY: float
 
     def check_url(
-        self, urls: str
+        self, urls: str, ctx: "SourceContext"
     ) -> tuple[dict | None, float | None, list[tuple[str, str]]]: ...
 
 

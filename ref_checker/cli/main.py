@@ -397,7 +397,8 @@ def run_lookup(args) -> None:
         value = arg_by_kind.get(kind)
         if value and kind in src.SUPPORTED_QUERY_KINDS:
             fn = getattr(src, _FN_BY_KIND[kind])
-            summary, sim = fn(value)
+            ctx = src.build_context()
+            summary, sim = fn(value, ctx)
             break
     else:
         print(f"No usable identifier/title supplied for {source}.", file=sys.stderr)

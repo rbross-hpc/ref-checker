@@ -93,7 +93,7 @@ def stub_sources(monkeypatch):
 
 class TestCheckReferences:
     def test_completes_normally(self, stub_sources, tmp_path, capsys):
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
+        stub_sources["openalex"].get_by_doi = lambda doi, ctx: (_summary(doi=doi), 1.0)
         refs = [_ref(index=1, doi="10.1/a"), _ref(index=2, doi="10.1/b")]
         sidecar = tmp_path / "results.json"
 
@@ -105,6 +105,29 @@ class TestCheckReferences:
         data = json.loads(sidecar.read_text())
         assert data["schema_version"] == 4
         assert set(data["references"].keys()) == {"1", "2"}
+
+    def test_same_session_reused_across_references_in_one_run(
+        self, stub_sources, tmp_path,
+    ):
+        """check_references() builds SourceContexts once per run (not per
+        reference) — see PLAN.md's SourceContext lifecycle decision. This is
+        what actually gets a connection-pooling benefit: every reference in
+        the run must see the same ctx.session object for a given source.
+        """
+        seen_sessions = []
+
+        def _record(doi, ctx):
+            seen_sessions.append(ctx.session)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _record
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sidecar = tmp_path / "results.json"
+
+        runner_mod.check_references(refs, sidecar=sidecar, pdf_name="test.pdf", jobs=1)
+
+        assert len(seen_sessions) == 3
+        assert len({id(s) for s in seen_sessions}) == 1
 
     def test_all_sources_disabled_breaks_and_flushes(self, stub_sources, tmp_path):
         def _boom(*a, **kw):
@@ -152,7 +175,7 @@ class TestCheckReferences:
         stub_sources["openalex"].get_by_doi = track("openalex", None)
         stub_sources["crossref"].get_by_doi = track("crossref", None)
         stub_sources["dblp"].search_by_title = track(
-            "dblp", lambda t: (_summary(title=t), 0.99),
+            "dblp", lambda t, ctx: (_summary(title=t), 0.99),
         )
         stub_sources["semanticscholar"].get_by_doi = track("semanticscholar", None)
         stub_sources["arxiv"].get_by_doi = track("arxiv", None)
@@ -172,7 +195,7 @@ class TestCheckReferences:
         """Simulate a SIGINT partway through a run and verify the sidecar is valid."""
         pytest.importorskip("threading")
 
-        stub_sources["openalex"].get_by_doi = lambda doi: (_summary(doi=doi), 1.0)
+        stub_sources["openalex"].get_by_doi = lambda doi, ctx: (_summary(doi=doi), 1.0)
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
         sidecar = tmp_path / "results.json"
@@ -185,12 +208,12 @@ class TestCheckReferences:
         call_count = {"n": 0}
         orig_get_by_doi = stub_sources["openalex"].get_by_doi
 
-        def _maybe_signal(doi):
+        def _maybe_signal(doi, ctx):
             call_count["n"] += 1
             if call_count["n"] == 3 and not signalled["done"]:
                 signalled["done"] = True
                 os.kill(os.getpid(), signal.SIGINT)
-            return orig_get_by_doi(doi)
+            return orig_get_by_doi(doi, ctx)
 
         stub_sources["openalex"].get_by_doi = _maybe_signal
 
@@ -214,7 +237,7 @@ class TestCheckReferences:
 class TestConcurrency:
     def test_jobs3_produces_same_results_as_jobs1(self, stub_sources, tmp_path):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
 
@@ -270,7 +293,7 @@ class TestConcurrency:
 
     def test_no_stdout_before_shutdown_emission(self, stub_sources, tmp_path, capsys):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
         sc = tmp_path / "results.json"
@@ -292,7 +315,7 @@ class TestConcurrency:
         errors_seen: list[int] = []
         lock = threading.Lock()
 
-        def _boom(doi):
+        def _boom(doi, ctx):
             with lock:
                 errors_seen.append(1)
             raise RuntimeError("service down")
@@ -316,7 +339,7 @@ class TestConcurrency:
     def test_shutdown_via_signal_flushes_sidecar_concurrent(self, stub_sources, tmp_path):
         """Simulate SIGINT partway through a concurrent run; sidecar must be valid."""
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 8)]
@@ -326,12 +349,12 @@ class TestConcurrency:
         signalled = {"done": False}
         orig = stub_sources["openalex"].get_by_doi
 
-        def _maybe_signal(doi):
+        def _maybe_signal(doi, ctx):
             call_count["n"] += 1
             if call_count["n"] >= 3 and not signalled["done"]:
                 signalled["done"] = True
                 os.kill(os.getpid(), signal.SIGINT)
-            return orig(doi)
+            return orig(doi, ctx)
 
         stub_sources["openalex"].get_by_doi = _maybe_signal
 
@@ -383,7 +406,7 @@ class TestBoundedSubmission:
         lock = threading.Lock()
         release = threading.Event()
 
-        def _slow(doi):
+        def _slow(doi, ctx):
             with lock:
                 in_flight["n"] += 1
                 if in_flight["n"] > in_flight["max"]:
@@ -415,7 +438,7 @@ class TestBoundedSubmission:
         self, stub_sources, tmp_path, capsys
     ):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 5)]
         sc = tmp_path / "results.json"
@@ -475,7 +498,7 @@ class TestBoundedSubmission:
 
         calls = {"n": 0}
 
-        def _twice_then_ok(doi):
+        def _twice_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 3:
                 raise RateLimited(retry_after=0.25)
@@ -498,7 +521,7 @@ class TestBoundedSubmission:
 
         seq = {"i": 0}
 
-        def _mixed(doi):
+        def _mixed(doi, ctx):
             seq["i"] += 1
             if seq["i"] % 2 == 1:
                 raise RateLimited(retry_after=0.0)
@@ -523,7 +546,7 @@ class TestBoundedSubmission:
         self, stub_sources, tmp_path, monkeypatch, capsys
     ):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
         sc = tmp_path / "results.json"
@@ -643,7 +666,7 @@ class TestQuotaAndVisibility:
 
         calls = {"n": 0}
 
-        def _rate_limited_then_ok(doi):
+        def _rate_limited_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 2:
                 raise RateLimited(retry_after=15.0)
@@ -672,7 +695,7 @@ class TestQuotaAndVisibility:
 
         calls = {"n": 0}
 
-        def _rate_limited_then_ok(doi):
+        def _rate_limited_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 2:
                 raise RateLimited(retry_after=1.0)
@@ -693,7 +716,7 @@ class TestQuotaAndVisibility:
         self, stub_sources, tmp_path, capsys,
     ):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 3)]
         sc = tmp_path / "results.json"
@@ -718,7 +741,7 @@ class TestRateLimitDiagnostics:
 
         calls = {"n": 0}
 
-        def _rl_twice_then_ok(doi):
+        def _rl_twice_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 3:
                 raise RateLimited(retry_after=5.0)
@@ -744,7 +767,7 @@ class TestRateLimitDiagnostics:
 
         calls = {"n": 0}
 
-        def _rl_once_then_ok(doi):
+        def _rl_once_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise RateLimited(retry_after=None)
@@ -768,7 +791,7 @@ class TestRateLimitDiagnostics:
 
         calls = {"n": 0}
 
-        def _err_once_then_ok(doi):
+        def _err_once_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 2:
                 raise RuntimeError("blip")
@@ -791,7 +814,7 @@ class TestRateLimitDiagnostics:
 
         calls = {"n": 0}
 
-        def _rl_then_ok(doi):
+        def _rl_then_ok(doi, ctx):
             calls["n"] += 1
             if calls["n"] < 2:
                 raise RateLimited(retry_after=120.0)
@@ -817,10 +840,10 @@ class TestStatsByMode:
         self, stub_sources, tmp_path, capsys,
     ):
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (None, None)
+            lambda doi, ctx: (None, None)
         )
         stub_sources["openalex"].search_by_title = (
-            lambda title: (None, None)
+            lambda title, ctx: (None, None)
         )
 
         refs = [_ref(index=1, doi="10.1/x1"), _ref(index=2, doi=None, title="T2")]
@@ -838,7 +861,7 @@ class TestStatsByMode:
         # Single-mode sources still show the (N mode) breakdown so the
         # summary format is consistent across sources.
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
@@ -857,10 +880,10 @@ class TestStatsByMode:
         monkeypatch.setattr(runtime_mod._Shutdown, "wait", lambda self, t: False)
 
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
 
-        def _title_rl(title):
+        def _title_rl(title, ctx):
             raise RateLimited(retry_after=0.0)
 
         stub_sources["openalex"].search_by_title = _title_rl
@@ -903,7 +926,7 @@ class TestSSUnauthDelay:
         monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
@@ -929,7 +952,7 @@ class TestSSUnauthDelay:
         monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
@@ -952,7 +975,7 @@ class TestSSUnauthDelay:
         monkeypatch.setattr(runtime_mod._RateLimiter, "__init__", _capture_init)
 
         stub_sources["openalex"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
         refs = [_ref(index=1, doi="10.1/x1")]
         sc = tmp_path / "results.json"
@@ -980,7 +1003,7 @@ class TestDisabledDuringFlight:
         call_count = {"n": 0}
         health_ref: dict = {}
 
-        def _rl_then_check(doi):
+        def _rl_then_check(doi, ctx):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 # After this raise, we disable the source ourselves.
@@ -1027,7 +1050,7 @@ class TestDisabledDuringFlight:
         stub_sources["openalex"].get_by_doi = _boom
         stub_sources["openalex"].search_by_title = _boom
         stub_sources["crossref"].get_by_doi = (
-            lambda doi: (_summary(doi=doi), 1.0)
+            lambda doi, ctx: (_summary(doi=doi), 1.0)
         )
 
         refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]

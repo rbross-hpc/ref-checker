@@ -5,11 +5,10 @@ import os
 import re
 from typing import Any
 
-import requests
-
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit
+from .base import SourceContext
 
 SOURCE_NAME = "semanticscholar"
 DEFAULT_DELAY = 8.0
@@ -17,11 +16,26 @@ SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.
 
 _BASE = "https://api.semanticscholar.org/graph/v1/paper"
 _FIELDS = "title,authors,year,venue,externalIds"
+_USER_AGENT = "ref-checker/0.1"
 
 
-def _headers() -> dict[str, str]:
-    h: dict[str, str] = {}
+def build_context() -> SourceContext:
+    """Build the Semantic Scholar :class:`SourceContext` once per run.
+
+    Unlike the other 5 scholarly sources, Semantic Scholar had no session at
+    all before this — every call used bare ``requests.get``. Its API key is
+    read once here into ``credentials`` instead of per-call via the old
+    ``_headers()`` helper.
+    """
+    session = build_session(_USER_AGENT)
     api_key = os.environ.get("SEMANTICSCHOLAR_API_KEY", "")
+    credentials = {"SEMANTICSCHOLAR_API_KEY": api_key} if api_key else {}
+    return SourceContext(session=session, credentials=credentials)
+
+
+def _headers(ctx: SourceContext) -> dict[str, str]:
+    h: dict[str, str] = {}
+    api_key = ctx.credentials.get("SEMANTICSCHOLAR_API_KEY", "")
     if api_key:
         h["x-api-key"] = api_key
     return h
@@ -63,12 +77,14 @@ def _summarize(entry: dict) -> dict[str, Any]:
     }
 
 
-def _get_paper(paper_id_str: str) -> tuple[dict | None, float | None]:
+def _get_paper(
+    paper_id_str: str, ctx: SourceContext
+) -> tuple[dict | None, float | None]:
     """Fetch a paper by its Semantic Scholar paper ID string (e.g. 'DOI:10.x/y')."""
-    resp = requests.get(
+    resp = ctx.session.get(
         f"{_BASE}/{paper_id_str}",
         params={"fields": _FIELDS},
-        headers=_headers(),
+        headers=_headers(ctx),
         timeout=30,
     )
     if resp.status_code == 200:
@@ -88,30 +104,32 @@ def _get_paper(paper_id_str: str) -> tuple[dict | None, float | None]:
     return None, None
 
 
-def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]:
     norm = _normalize_doi(doi)
     if not norm:
         return None, None
-    return _get_paper(f"DOI:{norm}")
+    return _get_paper(f"DOI:{norm}", ctx)
 
 
-def get_by_arxiv_id(arxiv_id: str) -> tuple[dict | None, float | None]:
+def get_by_arxiv_id(
+    arxiv_id: str, ctx: SourceContext
+) -> tuple[dict | None, float | None]:
     bare = re.sub(r"v\d+$", "", arxiv_id.strip())
-    return _get_paper(f"arXiv:{bare}")
+    return _get_paper(f"arXiv:{bare}", ctx)
 
 
 def search_by_title(
-    title: str,
+    title: str, ctx: SourceContext,
 ) -> tuple[dict | None, float | None]:
     params: dict[str, Any] = {
         "query": title,
         "limit": 5,
         "fields": _FIELDS,
     }
-    resp = requests.get(
+    resp = ctx.session.get(
         f"{_BASE}/search",
         params=params,
-        headers=_headers(),
+        headers=_headers(ctx),
         timeout=30,
     )
     if resp.status_code == 200:

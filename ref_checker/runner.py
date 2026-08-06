@@ -24,6 +24,7 @@ from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration
 from . import sidecar as _sidecar
 from .sources.registry import ALL_SOURCE_NAMES as _ALL_SOURCE_NAMES
 from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
+from .sources.registry import build_all_contexts as _build_all_contexts
 
 _SS_UNAUTH_DELAY = 12.0
 
@@ -74,6 +75,11 @@ def check_references(
         if 0.0 < current < _SS_UNAUTH_DELAY:
             effective_delays["semanticscholar"] = _SS_UNAUTH_DELAY
     rl = _RateLimiter(effective_delays, shutdown=shutdown)
+    # Built once for the whole run so every reference reuses the same
+    # session (and credentials) per scholarly source — see PLAN.md's
+    # "Planned work: shared SourceContext" for why this is per-run rather
+    # than per-reference or per-call.
+    contexts = _build_all_contexts()
 
     all_results: dict[int, LookupResult] = {}
     prior_entries: dict[int, dict] = {}
@@ -172,6 +178,7 @@ def check_references(
             shutdown=shutdown,
             sources_to_query=plans[ref.index],
             prior_result=prior_result,
+            contexts=contexts,
         )
         elapsed = time.monotonic() - started
         return ref, result, elapsed

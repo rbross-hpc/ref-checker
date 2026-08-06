@@ -12,11 +12,10 @@ import os
 import re
 from typing import Any
 
-import requests
-
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit
+from .base import SourceContext
 
 SOURCE_NAME = "osti"
 DEFAULT_DELAY = 2.0
@@ -25,17 +24,16 @@ SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.TITLE})
 _BASE = "https://www.osti.gov/api/v1/records"
 
 
-def _user_agent() -> str:
+def build_context() -> SourceContext:
+    """Build the OSTI :class:`SourceContext` once per run.
+
+    User-Agent only (no session-level params) — OSTI uses ``OPENALEX_MAILTO``
+    in its UA string like OpenAlex/CrossRef, but doesn't accept a ``mailto``
+    query param.
+    """
     mailto = os.environ.get("OPENALEX_MAILTO", "")
-    if mailto:
-        return f"ref-checker/0.1 (mailto:{mailto})"
-    return "ref-checker/0.1"
-
-
-def _session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update({"User-Agent": _user_agent()})
-    return s
+    user_agent = f"ref-checker/0.1 (mailto:{mailto})" if mailto else "ref-checker/0.1"
+    return SourceContext(session=build_session(user_agent))
 
 
 def _normalize_doi(doi: str | None) -> str | None:
@@ -107,11 +105,11 @@ def _summarize(record: dict) -> dict[str, Any]:
     }
 
 
-def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
+def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]:
     norm = _normalize_doi(doi)
     if not norm:
         return None, None
-    resp = _session().get(_BASE, params={"doi": norm}, timeout=30)
+    resp = ctx.session.get(_BASE, params={"doi": norm}, timeout=30)
     if resp.status_code == 200:
         records = resp.json()
         if isinstance(records, list) and records:
@@ -124,8 +122,10 @@ def get_by_doi(doi: str) -> tuple[dict | None, float | None]:
     return None, None
 
 
-def search_by_title(title: str) -> tuple[dict | None, float | None]:
-    resp = _session().get(_BASE, params={"title": title}, timeout=30)
+def search_by_title(
+    title: str, ctx: SourceContext
+) -> tuple[dict | None, float | None]:
+    resp = ctx.session.get(_BASE, params={"title": title}, timeout=30)
     if resp.status_code == 200:
         records = resp.json()
         if not isinstance(records, list) or not records:

@@ -162,9 +162,10 @@ class TestMirrorFailover:
                     return _FakeResponse(429, headers={})
                 return _FakeResponse(200, good_payload)
 
-        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+        from ref_checker.sources.base import SourceContext
 
-        summary, sim = dblp.search_by_title("mapreduce")
+        ctx = SourceContext(session=_Session())
+        summary, sim = dblp.search_by_title("mapreduce", ctx)
         assert summary is not None
         assert summary["source"] == "dblp"
         assert calls == [primary_url, mirror_url]
@@ -182,10 +183,11 @@ class TestMirrorFailover:
                 calls.append(url)
                 return _FakeResponse(429, headers={"Retry-After": "7"})
 
-        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+        from ref_checker.sources.base import SourceContext
 
+        ctx = SourceContext(session=_Session())
         with pytest.raises(RateLimited) as ei:
-            dblp.search_by_title("mapreduce")
+            dblp.search_by_title("mapreduce", ctx)
         assert ei.value.retry_after == 7.0
         assert len(calls) == len(dblp._BASES)
 
@@ -219,8 +221,9 @@ class TestMirrorFailover:
                     raise requests.exceptions.ConnectionError("boom")
                 return _FakeResponse(200, good_payload)
 
-        monkeypatch.setattr(dblp, "_session", lambda: _Session())
+        from ref_checker.sources.base import SourceContext
 
-        summary, sim = dblp.search_by_title("x")
+        ctx = SourceContext(session=_Session())
+        summary, sim = dblp.search_by_title("x", ctx)
         assert summary is not None
         assert calls == [primary_url, mirror_url]
