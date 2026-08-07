@@ -220,6 +220,90 @@ class TestCheckReferences:
         # dblp should have been queried
         assert calls["dblp"] >= 1
 
+    def test_interrupted_run_skipped_source_is_retried_and_incomplete_on_resume(
+        self, stub_sources, tmp_path, monkeypatch,
+    ):
+        """Regression test for the SKIPPED resume-state bug:
+
+        1. A run is interrupted mid-reference — one source (crossref) is
+           recorded as SKIPPED in the sidecar because shutdown becomes
+           requested (as it genuinely would during a real Ctrl-C, mid
+           rate-limiter reservation) after the source's per-reference
+           iteration has already begun but before its actual HTTP attempt.
+           We trigger this deterministically via the real _Shutdown object
+           the rate limiter already holds a reference to (hooking
+           _RateLimiter.wait, which is where shutdown races against
+           in-flight per-source dispatch in the real code) rather than
+           relying on real-time SIGINT delivery timing, which cannot be
+           landed reliably in this exact one-statement window.
+        2. The interrupted run's sidecar evidence must be INCOMPLETE, not
+           NOT_FOUND (openalex genuinely came back not_found; crossref never
+           actually ran).
+        3. Resuming must re-query crossref (previously the bug: SKIPPED was
+           silently never retried) and, once every source has a genuine
+           conclusive answer, must move evidence to NOT_FOUND.
+        """
+        refs = [_ref(index=1, doi="10.1/x1", title="Some Paper")]
+        sidecar = tmp_path / "results.json"
+
+        stub_sources["openalex"].get_by_doi = lambda doi, ctx: (None, None)
+
+        orig_wait = runtime_mod._RateLimiter.wait
+
+        def _wait_then_request_shutdown_for_crossref(self, source_name):
+            orig_wait(self, source_name)
+            if source_name == "crossref" and self._shutdown is not None:
+                self._shutdown.request()
+
+        monkeypatch.setattr(
+            runtime_mod._RateLimiter, "wait", _wait_then_request_shutdown_for_crossref,
+        )
+
+        reason = runner_mod.check_references(
+            refs, sidecar=sidecar, pdf_name="test.pdf", jobs=1,
+        )
+        assert reason == "keyboard_interrupt"
+
+        data = json.loads(sidecar.read_text())
+        entry = data["references"]["1"]["result"]
+        assert entry["per_source"]["openalex"]["status"] == "not_found"
+        assert entry["per_source"]["crossref"]["status"] == "skipped"
+        # Interrupted, not a genuine negative — must not read as NOT_FOUND.
+        assert entry["evidence"] == "incomplete"
+
+        # --- Resume: crossref (skipped) must be re-queried this time. ---
+        monkeypatch.setattr(runtime_mod._RateLimiter, "wait", orig_wait)
+        calls = {name: 0 for name in ALL_SOURCE_NAMES}
+
+        def track(name, orig):
+            def _wrapped(*a, **kw):
+                calls[name] += 1
+                return orig(*a, **kw) if orig else (None, None)
+            return _wrapped
+
+        stub_sources["openalex"].get_by_doi = track("openalex", None)
+        stub_sources["crossref"].get_by_doi = track("crossref", None)
+        stub_sources["osti"].get_by_doi = track("osti", None)
+        stub_sources["dblp"].search_by_title = track("dblp", None)
+        stub_sources["semanticscholar"].get_by_doi = track("semanticscholar", None)
+        stub_sources["arxiv"].get_by_doi = track("arxiv", None)
+
+        reason2 = runner_mod.check_references(
+            refs, sidecar=sidecar, pdf_name="test.pdf", jobs=1, resume=True,
+        )
+        assert reason2 is None
+        # openalex already had a real not_found — smart-rerun should not
+        # re-query it. crossref was SKIPPED — must be retried.
+        assert calls["openalex"] == 0
+        assert calls["crossref"] == 1
+
+        data2 = json.loads(sidecar.read_text())
+        entry2 = data2["references"]["1"]["result"]
+        assert entry2["per_source"]["crossref"]["status"] == "not_found"
+        # Every scholarly source now has a genuine not_found — a real
+        # negative result, correctly reported as NOT_FOUND this time.
+        assert entry2["evidence"] == "not_found"
+
     def test_shutdown_via_signal_flushes_sidecar(self, stub_sources, tmp_path):
         """Simulate a SIGINT partway through a run and verify the sidecar is valid."""
         pytest.importorskip("threading")

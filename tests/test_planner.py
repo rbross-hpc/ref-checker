@@ -83,3 +83,22 @@ class TestPlanRefWork:
                                     "score": None, "summary": None}
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" not in targets
+
+    def test_skipped_always_retried(self):
+        r = LookupResult(display_score=0.30)
+        r.per_source["crossref"] = {"status": "skipped", "queried_by": [],
+                                    "score": None, "summary": None,
+                                    "note": "aborted by user"}
+        targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
+        assert "crossref" in targets
+
+    def test_skipped_retried_even_when_retry_errored_flag_off(self):
+        """A skipped query was never actually attempted — it should be
+        retried regardless of retry_errored, unlike error/rate_limited.
+        """
+        r = LookupResult(display_score=0.30)
+        r.per_source["crossref"] = {"status": "skipped", "queried_by": [],
+                                    "score": None, "summary": None,
+                                    "note": "aborted by user"}
+        targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
+        assert "crossref" in targets

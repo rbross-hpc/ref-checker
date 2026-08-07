@@ -54,6 +54,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Interrupted runs could be mistaken for completed negative results**:
+  `_plan_ref_work` (the resume/smart-rerun planner) now retries sources
+  left in `skipped` status by a previous interrupted run (Ctrl-C), not just
+  `disabled` / `error` / `rate_limited`. Previously a source skipped due to
+  shutdown was silently never re-queried on `--resume`. Separately,
+  `LookupResult.recompute_best()` now classifies a reference's `evidence`
+  as `incomplete` (rather than `not_found`) whenever any applicable source
+  is `skipped` or `disabled`, even if every source that *did* run came back
+  negative — a reference is only reported as a genuine `not_found` when
+  every applicable source reached a conclusive negative result.
+  `exhausted_sources` (and its CLI display text) keeps its existing
+  `error`/`rate_limited`-only meaning; the new check is additive. See
+  `docs/lookup-engine.md`'s "Inconclusive sources and evidence" section.
 - **Duplicated rate-limit defaults**: the per-source delay defaults were
   hardcoded identically in three places (`engine.py`, `runner.py`, and
   eight `--delay-<source>` argparse defaults in `cli/main.py`). Now

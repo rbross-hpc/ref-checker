@@ -129,8 +129,13 @@ line is shown, indicating the DOI may resolve to a differently-titled paper
 
 `_plan_ref_work` decides, per reference, which sources actually need to be
 queried on a resume: only those missing from `per_source`, or previously
-`disabled` / `error` / `rate_limited`. This is what powers the default
-resume behavior described in
+`disabled` / `skipped` / `error` / `rate_limited`. `disabled` and `skipped`
+are always retried regardless of `--no-retry-errored`, since neither
+represents a real attempt that concluded — `disabled` means the session
+circuit breaker never let the call through, and `skipped` means the run was
+interrupted (Ctrl-C) before the source's turn. `error` / `rate_limited` are
+gated by `retry_errored` since those did make (and exhaust) real attempts.
+This is what powers the default resume behavior described in
 [README.md](../README.md#resuming-interrupted-or-incomplete-runs) and the
 `--retry-all` / `--retry-closest` / `--no-retry-errored` flags.
 
@@ -185,4 +190,22 @@ exception. For `_plan_ref_work` smart-rerun and
 identically (both retried under `retry_errored`, both count toward
 "results may be incomplete") — the distinction is machine-visible but does
 not yet change behavior.
+
+### Inconclusive sources and `evidence`
+
+A reference's aggregate `evidence` must never read as `not_found` unless
+*every* applicable source actually returned a conclusive negative
+(`not_found`). `LookupResult.recompute_best()` treats `skipped` (run
+interrupted before that source's turn) and `disabled` (session circuit
+breaker never let the call through) the same way it treats `error` /
+`rate_limited`: as an inconclusive result that forces `evidence` to
+`incomplete` rather than `not_found`, even when every *attempted* source
+came back negative. This is a separate check from
+`LookupResult.exhausted_sources`, which intentionally keeps its narrower,
+user-facing meaning (`error` / `rate_limited` only — "we tried and the
+attempt itself failed") since that list's contents are also surfaced
+verbatim in CLI output; folding `skipped` / `disabled` into it would make
+"exhausted sources: X" describe a source that was never actually attempted.
+`skipped` and `disabled` therefore only affect the `evidence` computation,
+not `exhausted_sources`.
 </content>
