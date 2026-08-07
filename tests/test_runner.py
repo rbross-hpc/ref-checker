@@ -547,11 +547,33 @@ class TestThreadLocalSourceContexts:
         Each (thread, session) pairing must be internally consistent (one
         thread -> always the same session) and distinct threads must never
         report the same session id.
+
+        Relying on incidental scheduling to exercise >1 worker thread is
+        not safe: ThreadPoolExecutor only spawns a new thread on submit()
+        if no existing worker is already idle, so with a near-instant stub
+        and zeroed delays (see _no_delays), a single thread can finish task
+        1 and go idle before the pool ever needs to spawn a second one --
+        this previously flaked in CI with only 1 distinct thread_id
+        observed. runner.py's bounded submission window (jobs + 1 = 4)
+        submits 4 tasks upfront before waiting on any completion, so the
+        first 3 dispatched tasks are guaranteed to land on 3 distinct
+        freshly-spawned threads (max_workers=3) -- a Barrier makes that
+        guarantee actually observable by forcing all 3 to be alive
+        simultaneously, instead of hoping they happen to overlap.
         """
         seen: list[tuple[int, int]] = []
         lock = threading.Lock()
+        barrier = threading.Barrier(3)
+        counted = 0
+        count_lock = threading.Lock()
 
         def _record(doi, ctx):
+            nonlocal counted
+            with count_lock:
+                should_wait = counted < 3
+                counted += 1
+            if should_wait:
+                barrier.wait(timeout=5)
             with lock:
                 seen.append((threading.get_ident(), id(ctx.session)))
             return _summary(doi=doi), 1.0
