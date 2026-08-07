@@ -39,11 +39,22 @@ class _FakeResponse:
 class _FakeSession:
     """Mimics ``requests.Session``'s auto-merge of session-level ``params``
     (set once, e.g. by ``build_context()``) into every per-call ``params=``.
+
+    ``response`` may be a single ``_FakeResponse`` (returned for every
+    call) or a list of them (popped in order, one per call, with the last
+    entry reused once the list is exhausted) — the latter is used to
+    simulate a source retrying after the first response.
     """
 
-    def __init__(self, response: _FakeResponse, params: dict | None = None):
-        self._response = response
+    def __init__(
+        self,
+        response: _FakeResponse | list[_FakeResponse],
+        params: dict | None = None,
+    ):
+        self._responses = response if isinstance(response, list) else [response]
+        self._call_count = 0
         self.calls: list[tuple[str, dict]] = []
+        self.headers_seen: list[dict[str, str]] = []
         self.headers: dict[str, str] = {}
         self.params: dict = dict(params or {})
 
@@ -52,7 +63,10 @@ class _FakeSession:
         if params:
             merged.update(params)
         self.calls.append((url, merged))
-        return self._response
+        self.headers_seen.append(dict(headers or {}))
+        idx = min(self._call_count, len(self._responses) - 1)
+        self._call_count += 1
+        return self._responses[idx]
 
 
 def _ctx(session, credentials=None) -> SourceContext:
@@ -289,3 +303,62 @@ class TestSemanticScholar403Hint:
         msg = str(ei.value)
         assert "403" in msg
         assert "SEMANTICSCHOLAR_API_KEY" in msg
+
+    def test_get_by_doi_403_with_key_drops_key_and_retries(self, capsys):
+        good_payload = {
+            "title": "T", "authors": [], "year": 2020,
+            "venue": "V", "externalIds": {"DOI": "10.1/x"},
+        }
+        session = _FakeSession(
+            [_FakeResponse(403, headers={}), _FakeResponse(200, good_payload)]
+        )
+        ctx = _ctx(session, credentials={"SEMANTICSCHOLAR_API_KEY": "bad-key"})
+        summary, sim = semanticscholar.get_by_doi("10.1/x", ctx)
+        assert summary is not None
+        assert summary["doi"] == "10.1/x"
+        assert len(session.calls) == 2
+        assert "x-api-key" in session.headers_seen[0]
+        assert "x-api-key" not in session.headers_seen[1]
+        assert ctx.credentials["SEMANTICSCHOLAR_API_KEY"] == ""
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert "dropping it" in err
+
+    def test_search_by_title_403_with_key_drops_key_and_retries(self, capsys):
+        good_payload = {
+            "data": [
+                {"title": "T", "authors": [], "year": 2020,
+                 "venue": "V", "externalIds": {}}
+            ]
+        }
+        session = _FakeSession(
+            [_FakeResponse(403, headers={}), _FakeResponse(200, good_payload)]
+        )
+        ctx = _ctx(session, credentials={"SEMANTICSCHOLAR_API_KEY": "bad-key"})
+        summary, sim = semanticscholar.search_by_title("t", ctx)
+        assert summary is not None
+        assert len(session.calls) == 2
+        assert "x-api-key" in session.headers_seen[0]
+        assert "x-api-key" not in session.headers_seen[1]
+        assert ctx.credentials["SEMANTICSCHOLAR_API_KEY"] == ""
+
+    def test_get_by_doi_403_without_key_still_raises_hint(self, capsys):
+        session = _FakeSession(_FakeResponse(403, headers={}))
+        from requests import HTTPError
+        ctx = _ctx(session)
+        with pytest.raises(HTTPError) as ei:
+            semanticscholar.get_by_doi("10.1/x", ctx)
+        assert "SEMANTICSCHOLAR_API_KEY" in str(ei.value)
+        assert len(session.calls) == 1
+        assert capsys.readouterr().err == ""
+
+    def test_double_403_with_key_only_warns_once_then_raises_hint(self, capsys):
+        session = _FakeSession(_FakeResponse(403, headers={}))
+        from requests import HTTPError
+        ctx = _ctx(session, credentials={"SEMANTICSCHOLAR_API_KEY": "bad-key"})
+        with pytest.raises(HTTPError) as ei:
+            semanticscholar.get_by_doi("10.1/x", ctx)
+        assert "SEMANTICSCHOLAR_API_KEY" in str(ei.value)
+        assert len(session.calls) == 2
+        err = capsys.readouterr().err
+        assert err.count("WARNING") == 1
