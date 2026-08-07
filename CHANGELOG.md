@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Checked-in matching-quality benchmark corpus**
+  (`tests/fixtures/matching_benchmark.json` +
+  `tests/test_matching_benchmark.py`): 41 hand-curated `(ref_title,
+  ref_year, cand_title, cand_year)` pairs across the 8 categories called
+  for in `BACKLOG.md` — exact, abbreviated, OCR damage, wrong years,
+  preprint vs. published, similar papers by the same authors, generic
+  titles, and intentionally unresolvable references — each with a ground-
+  truth `same_paper` label and a checked-in `expected_classification`
+  baseline. Exercises the real title-search scoring path end to end
+  (`similarity.py:title_ratio` → `results.py:apply_year_mismatch_penalty`
+  → classification against `STRONG_MATCH_THRESHOLD`/`min_match`), not a
+  reimplementation of it, so the corpus can't silently drift from
+  production behavior. Most `same_author_similar` cases and part of
+  `generic_titles`/`abbreviated` are **real** near-collision titles mined
+  from this repo's own `tests/fixtures/refs/*.json` fixtures (e.g. a
+  numbered paper series, Part I/II companions, LaTeX-brace-mangled
+  BibTeX titles from the sibling `../annual-report` repo) rather than
+  hypothetical constructions; the anchor `preprint_vs_published` case
+  (`ChatVis`) is a verified real preprint-retitled-at-publication case
+  from that same sibling repo's extracted-publication metadata.
+  `TestClassificationMatchesBaseline` asserts per-case classification
+  against the baseline (pinpoints exactly which case flipped);
+  `TestConfusionMatrixSummary` asserts the aggregate false-confirm/
+  false-reject/ambiguous counts and confirms no different-paper pair in
+  the current corpus scores high enough to be an outright false
+  confirmation today. Several cases are annotated `KNOWN FALSE REJECT`
+  (no alias table for bare project names/acronyms) or `KNOWN ACCEPTED
+  GAP` (no author/venue scoring to disambiguate same-series/generic
+  titles) — measurement-only per the backlog item's scope; fixing either
+  gap is a new, separate `BACKLOG.md` item. `docs/matching.md`'s "Known
+  limitations" section rewritten around the corpus's actual findings.
+
 ### Fixed
 
 - **Flaky `test_runner.py::TestThreadLocalSourceContexts::test_concurrent_run_never_shares_one_session_across_two_threads`**
