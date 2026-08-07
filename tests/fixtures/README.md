@@ -116,6 +116,56 @@ Deliberate edge cases for defensive-coding tests:
 4. GitHub URL only (dataset-style ref).
 5. Title + year only (no identifiers) — forces title-search on all sources.
 
+### `matching_benchmark.json` (41 title/year pairs, hand-curated)
+
+Ground-truth corpus for `tests/test_matching_benchmark.py`, which measures
+false-confirmation / false-rejection / ambiguous rates of the title-search
+scoring path (`similarity.py:title_ratio` +
+`results.py:apply_year_mismatch_penalty` against `STRONG_MATCH_THRESHOLD`
+and `min_match`) — see [../../docs/matching.md](../../docs/matching.md).
+Unlike the `refs/` fixtures above, this is **not** golden extract-once
+data: each entry is a hand-picked `(ref_title, ref_year, cand_title,
+cand_year)` pair with a `same_paper` ground-truth label and a checked-in
+`expected_classification` baseline (the scorer's actual current output,
+not an aspirational target), and the corpus is meant to grow over time as
+new gaps are found.
+
+Provenance, per `category`:
+
+- **Real pairs drawn directly from this repo's own `refs/*.json`
+  fixtures** — most of `same_author_similar` and part of `generic_titles`
+  are real near-collision titles mined from `wan_e3smv2.json`,
+  `zfp_spectral.json`, and `klasky_5.json` (e.g. a numbered paper series,
+  Part I/II companion papers, a software release note vs. its FAQ). These
+  are titles that genuinely appear together in the same real bibliography
+  and score surprisingly high on `title_ratio` despite being different
+  works — exactly the risk `similarity.py`'s "Known limitations" section
+  warns about.
+- **Real pairs drawn from the sibling `../annual-report` repo** — the
+  `abbreviated` category's LaTeX-brace-mangled titles (`St{FT}`,
+  `FM}4{NPP}`, a LaTeX degree-symbol macro) come verbatim from
+  `../annual-report/sources/bibtex/*.bib`. The anchor
+  `preprint_vs_published` case (`ChatVis`) is a **verified real case**:
+  `../annual-report/build/extracted/publications/*.json` records, via its
+  own `notes` field, that the arXiv preprint was "superseded by published
+  version ... (DOI: 10.1109/ldav68558.2025.00007)" under a materially
+  different title — confirmed same paper, real retitling.
+- **Synthetic cases** — `ocr_damage` (character-level corruption applied
+  to real titles from `refs/*.json`), `wrong_years` (real identical-title
+  pairs with the year perturbed, isolating the year-penalty in isolation),
+  the remaining `preprint_vs_published` and `generic_titles` cases
+  (hypothetical pairs in the same spirit as the verified real ones, not
+  themselves verified against a real second paper), and `unresolvable`
+  (fabricated nonsense titles, or a real deliberately-unfindable title
+  from `mixed_small.json` #9 paired against unrelated real candidates).
+
+Several cases are annotated `KNOWN FALSE REJECT` or `KNOWN ACCEPTED GAP`
+in their `note` field — these are real, currently-existing scoring
+weaknesses (no alias table for abbreviated names, no author/venue scoring
+to disambiguate same-series titles) that this benchmark exists to
+*measure*, not fix; see `docs/matching.md` and `BACKLOG.md` for the
+follow-on work each gap points to.
+
 ## Regenerating (rarely needed)
 
 Regenerate only when the `ref_checker/extract.py` schema changes in a way

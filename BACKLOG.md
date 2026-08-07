@@ -54,16 +54,31 @@ None` is a drop-in type swap).
 
 ## Matching quality
 
-### Checked-in matching-quality benchmark corpus
+### Author/venue scoring for same-series and generic-title disambiguation
 
-The current title score (`similarity.py`) is a reasonable baseline, but no
-checked-in corpus measures it. Build a small benchmark covering: exact
-citations, abbreviated titles, OCR damage, wrong years, preprint vs.
-published versions, similar papers by the same authors, generic titles that
-should not auto-match, and intentionally unresolvable references. Measure
-false confirmations, false rejections, and ambiguous cases before changing
-title/year thresholds or adding author/venue scoring. See
-[docs/matching.md](docs/matching.md).
+`tests/fixtures/matching_benchmark.json` (see
+[docs/matching.md](docs/matching.md#matching-quality-benchmark)) quantifies
+a real gap: papers in a numbered series or Part I/II pair by the same
+authors (e.g. real cases mined from `wan_e3smv2.json`/`zfp_spectral.json`),
+and unrelated papers with generically similar phrasing (e.g. "A Survey of
+X Techniques for Y"), can score in the "ambiguous" band on title alone —
+8 of the corpus's 41 checked-in cases (`same_author_similar` +
+`generic_titles`, tagged `KNOWN ACCEPTED GAP`). No outright false
+*confirmations* occur in the current corpus, but author/venue agreement is
+the natural next signal to add to push these down toward a clean reject.
+Any such change should be validated against the benchmark corpus (extend
+it with more cases as needed) rather than by intuition, and should update
+the corpus's checked-in baseline classifications/confusion-matrix counts
+where they intentionally change.
+
+### Abbreviation/alias handling for bare project names
+
+The benchmark corpus's `abbreviated` category found a real false-reject:
+a bare acronym or software/project name (e.g. `"scikit-learn"`) scores far
+below `min_match` against that project's full paper title, even though
+it's the same work. Fixing this would need an alias/abbreviation table or
+a different scoring approach for short, name-like titles — out of scope
+for the benchmark-building work itself.
 
 ### arXiv title search recall
 
