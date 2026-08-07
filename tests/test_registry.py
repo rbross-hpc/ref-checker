@@ -39,14 +39,27 @@ class TestThreadLocalSourceContexts:
         assert openalex_ctx.session is not crossref_ctx.session
 
     def test_different_threads_get_different_contexts_for_same_source(self):
+        # Threads are cheap and do almost no work here (just a dict lookup),
+        # so a thread can fully terminate -- and have its native OS thread
+        # id recycled -- before another thread in this same batch even
+        # starts. threading.get_ident() is therefore not a safe uniqueness
+        # key for short-lived threads (see git history: this previously
+        # kept results in a dict keyed by get_ident(), which flaked in CI
+        # with fewer than 4 entries whenever two threads' lifetimes didn't
+        # overlap and the OS reused an id). Collect into a plain list
+        # instead, and use a Barrier to force all 4 threads to be alive and
+        # calling contexts.get() concurrently, which is what this test
+        # actually means to exercise.
         contexts = ThreadLocalSourceContexts()
-        results: dict[int, SourceContext] = {}
+        collected: list[SourceContext] = []
         lock = threading.Lock()
+        barrier = threading.Barrier(4)
 
         def _worker():
+            barrier.wait()
             ctx = contexts.get("openalex")
             with lock:
-                results[threading.get_ident()] = ctx
+                collected.append(ctx)
 
         threads = [threading.Thread(target=_worker) for _ in range(4)]
         for t in threads:
@@ -54,8 +67,8 @@ class TestThreadLocalSourceContexts:
         for t in threads:
             t.join()
 
-        assert len(results) == 4
-        session_ids = {id(ctx.session) for ctx in results.values()}
+        assert len(collected) == 4
+        session_ids = {id(ctx.session) for ctx in collected}
         assert len(session_ids) == 4
 
     def test_close_all_closes_every_built_session_across_threads(self):

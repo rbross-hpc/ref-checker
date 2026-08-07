@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Flaky `test_registry.py::test_different_threads_get_different_contexts_for_same_source`**
+  (test-only, no production code change): the test keyed a results dict by
+  `threading.get_ident()`, but native OS thread ids can be recycled once a
+  thread terminates — with 4 threads each doing almost no work, one thread
+  could fully finish (and have its id reused) before another in the same
+  batch even started, so two `_worker()` invocations would collide on the
+  same dict key and `len(results)` would come back below 4. Seen flaking
+  in CI on Python 3.10/3.12. Fixed by collecting into a plain list instead
+  of a dict keyed by thread id, and adding a `threading.Barrier(4)` so all
+  4 threads are provably alive and calling `contexts.get()` concurrently —
+  what the test actually means to exercise. Stress-tested 50x locally with
+  no failures. `ThreadLocalSourceContexts` itself
+  (`sources/registry.py`) was already correct; only the test harness was
+  buggy.
+
 ### Added
 
 - **Shared `SourceContext` (session pooling) for liveness sources**:
