@@ -187,6 +187,13 @@ are derived views recomputed by `LookupResult.recompute_best()` from
 `per_source` — there is exactly one code path that decides the "winning"
 result, rather than each lookup mutating final status independently.
 
+`LookupResult.per_source: dict[str, SourceOutcome]` — `SourceOutcome`
+(`model.py`) is the actual in-memory representation (not just a decorative
+typed accessor over a raw dict); `record_source()` builds/mutates
+`SourceOutcome` instances directly. Dict conversion happens only at the
+sidecar's JSON serialization boundary below, via
+`SourceOutcome.to_dict()`/`from_dict()`.
+
 `LookupResult.evidence` (a `model.EvidenceLevel`) is an additive,
 finer-grained classification of what a lookup established
 (`confirmed_identifier`, `strong_metadata_match`, `weak_or_ambiguous_match`,

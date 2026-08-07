@@ -132,6 +132,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   entry above), each worker thread discovers and drops a bad key
   independently on its own first 403.
 
+### Changed
+
+- **`SourceOutcome` is now the real in-memory representation of
+  `LookupResult.per_source`**, not a decorative, unused-in-the-pipeline
+  typed accessor: `per_source: dict[str, SourceOutcome]` (was `dict[str,
+  dict]`). `record_source()` now builds/mutates `SourceOutcome` instances
+  (same precedence/merge semantics as before — status precedence,
+  best-score-wins, deduped `queried_by` append, note-overwrite rules,
+  unchanged); `recompute_best()`, `engine.py`, `planner.py`, and
+  `format.py`'s `_osti_id_if_confident()` read via attribute access
+  (`entry.outcome`, `entry.summary`, ...) instead of `dict.get(...)`.
+  `SourceOutcome` gained a `to_dict()` (paired with the existing
+  `from_dict()`, matching `Reference`'s house style); dict conversion is
+  now restricted to `sidecar.py`'s serialization boundary
+  (`result_to_dict`/`result_from_dict`) — the on-disk sidecar JSON shape
+  is unchanged (`SourceOutcome.to_dict()` emits the same plain
+  string/list/dict shape as before, not enum reprs).
+  `LookupResult.source_outcome()` is now a thin `per_source.get(...)`
+  wrapper since entries already are `SourceOutcome`. Behavior-preserving;
+  no CLI or sidecar-format change. `summary`/`best_summary` remain
+  untyped `dict | None` for now — a typed `Candidate` is a separate,
+  larger follow-on (touches every source adapter module), tracked in
+  `BACKLOG.md`.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added

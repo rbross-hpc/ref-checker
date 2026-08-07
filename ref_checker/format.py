@@ -30,15 +30,15 @@ def _osti_id_if_confident(ref: Reference, result: LookupResult) -> str | None:
     entry = result.per_source.get("osti") if result.per_source else None
     if not entry:
         return None
-    summary = entry.get("summary") or {}
+    summary = entry.summary or {}
     ext_id = summary.get("external_id")
     if not ext_id:
         return None
-    status = entry.get("status")
+    status = entry.outcome
     if status == OutcomeKind.HIT_ID:
         return str(ext_id)
     if status == OutcomeKind.HIT_TITLE:
-        score = entry.get("score")
+        score = entry.score
         if score is None:
             return None
         cand_year = summary.get("year")

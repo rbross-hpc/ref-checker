@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from .extract import Reference
-from .model import EvidenceLevel
+from .model import EvidenceLevel, SourceOutcome
 from .results import STRONG_MATCH_THRESHOLD, LookupResult
 
 SIDECAR_SCHEMA_VERSION = 4
@@ -60,7 +60,7 @@ def result_to_dict(result: LookupResult, min_match: float) -> dict:
         "dead_urls": [list(t) for t in result.dead_urls],
         "exhausted_sources": result.exhausted_sources,
         "url_liveness_check": result.url_liveness_check,
-        "per_source": result.per_source,
+        "per_source": {k: v.to_dict() for k, v in result.per_source.items()},
     }
 
 
@@ -81,7 +81,10 @@ def result_from_dict(d: dict) -> LookupResult:
         dead_urls=[tuple(t) for t in (d.get("dead_urls") or [])],
         exhausted_sources=d.get("exhausted_sources") or [],
         url_liveness_check=d.get("url_liveness_check", False),
-        per_source=d.get("per_source") or {},
+        per_source={
+            k: SourceOutcome.from_dict(k, v)
+            for k, v in (d.get("per_source") or {}).items()
+        },
         evidence=EvidenceLevel(evidence_raw) if evidence_raw else None,
     )
 

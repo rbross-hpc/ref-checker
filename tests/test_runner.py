@@ -183,14 +183,12 @@ class TestCheckReferences:
         sidecar_path = tmp_path / "results.json"
 
         prior_result = LookupResult()
-        prior_result.per_source["openalex"] = {
-            "status": "hit_title", "queried_by": ["title"],
-            "score": 0.30, "summary": _summary(title="Wrong Paper"),
-        }
-        prior_result.per_source["crossref"] = {
-            "status": "not_found", "queried_by": ["doi", "title"],
-            "score": None, "summary": None,
-        }
+        prior_result.record_source(
+            "openalex", "hit_title", queried_by="title",
+            score=0.30, summary=_summary(title="Wrong Paper"),
+        )
+        prior_result.record_source("crossref", "not_found", queried_by="doi")
+        prior_result.record_source("crossref", "not_found", queried_by="title")
         sidecar_mod.write(sidecar_path, "test.pdf", refs, {1: prior_result}, 0.80)
 
         calls = {name: 0 for name in ALL_SOURCE_NAMES}
@@ -491,10 +489,10 @@ class TestConcurrency:
             id_confirmed=True, display_score=0.99, best_source="openalex",
             best_summary=_summary(doi="10.1/pre"),
         )
-        prior.per_source["openalex"] = {
-            "status": "hit_id", "queried_by": ["doi"],
-            "score": 1.0, "summary": _summary(doi="10.1/pre"), "note": None,
-        }
+        prior.record_source(
+            "openalex", "hit_id", queried_by="doi",
+            score=1.0, summary=_summary(doi="10.1/pre"),
+        )
         sc = tmp_path / "results.json"
         sidecar_mod.write(sc, "p.pdf", refs, {1: prior, 2: prior}, 0.80)
 

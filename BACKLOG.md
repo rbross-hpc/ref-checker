@@ -36,23 +36,21 @@ itself become a thing.
 
 ## Architecture / type safety
 
-### Make SourceOutcome/typed per_source the real in-memory representation
+### Typed `Candidate` for `best_summary`/`SourceOutcome.summary`
 
-`SourceOutcome` (`model.py`) is currently a decorative, unused-in-the-pipeline
-typed accessor: `LookupResult.per_source` is `dict[str, dict]`, and every
-production read/write (`record_source`, `recompute_best`, `planner.py`,
-`format.py`, `sidecar.py`) goes through raw dicts end to end —
-`LookupResult.source_outcome()` is never actually called anywhere except
-its own tests. This means a typo'd status string, an unknown field, or an
-invalid status/summary combination is not caught by the type system.
-
-Next step: make `per_source: dict[str, SourceOutcome]` (plus a typed
-`Candidate` for `best_summary`) the actual in-memory representation, and
-restrict dict conversion to `sidecar.py`'s serialization boundary and
-JSON-reporting code. This is expected to be behavior-preserving. Worth
-doing before introducing mypy/pyright, since a type checker would
-currently see through most of this code but lose all value the moment it
-reaches a `dict[str, Any]`.
+`LookupResult.per_source` is now `dict[str, SourceOutcome]` (done — see
+`CHANGELOG.md`), but `SourceOutcome.summary` and `LookupResult.best_summary`
+are still untyped `dict | None`: the provider-summary shape produced by
+every source adapter (`title`, `authors`, `year`, `venue`, `doi`, `url`,
+`external_id`, `source`). Introducing a typed `Candidate` dataclass for
+this was deliberately deferred out of the `SourceOutcome` work — it has a
+materially bigger blast radius, touching every source adapter module's
+`_summarize()`-equivalent function (`openalex.py`, `crossref.py`,
+`osti.py`, `dblp.py`, `semanticscholar.py`, `arxiv.py`, `github.py`,
+`url.py`), not just the 6 files `SourceOutcome` touched. Worth doing as a
+follow-on once there's appetite for that wider a diff; `SourceOutcome`
+itself needs no further change to accommodate it (`summary: Candidate |
+None` is a drop-in type swap).
 
 ### Extend source Protocols to cover the full adapter contract
 

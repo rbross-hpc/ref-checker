@@ -259,7 +259,7 @@ def lookup_reference(
     # --- arXiv ID lookup (before scholarly loop) ---
     def _id_confirmed() -> bool:
         return any(
-            e.get("status") == OutcomeKind.HIT_ID
+            e.outcome == OutcomeKind.HIT_ID
             for e in result.per_source.values()
         )
 
@@ -298,9 +298,9 @@ def lookup_reference(
             # Only title-search if we don't already have a strong title hit ≥ 0.90
             best_title = 0.0
             for entry in result.per_source.values():
-                if entry.get("status") == OutcomeKind.HIT_TITLE and entry.get("score") is not None:
-                    if entry["score"] > best_title:
-                        best_title = entry["score"]
+                if entry.outcome == OutcomeKind.HIT_TITLE and entry.score is not None:
+                    if entry.score > best_title:
+                        best_title = entry.score
             if best_title < 0.90:
                 call(src, "title", ref.title)
 

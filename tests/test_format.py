@@ -2,6 +2,7 @@
 import pytest
 
 from ref_checker.extract import Reference
+from ref_checker.model import OutcomeKind, QueryKind, SourceOutcome
 from ref_checker.results import LookupResult
 from ref_checker.sidecar import status_label
 from ref_checker.format import (
@@ -10,6 +11,21 @@ from ref_checker.format import (
     _osti_id_if_confident,
     format_result,
 )
+
+
+def _outcome(source, status, score=None, summary=None, queried_by=None, note=None):
+    if queried_by is None:
+        queried_by = ["doi"] if status == "hit_id" else (
+            ["title"] if status == "hit_title" else []
+        )
+    return SourceOutcome(
+        source=source,
+        outcome=OutcomeKind(status),
+        queried_by=[QueryKind(q) for q in queried_by],
+        score=score,
+        summary=summary,
+        note=note,
+    )
 
 
 def _ref(**kwargs):
@@ -262,18 +278,15 @@ class TestFormatResultMatchesStatusLabel:
 
 
 def _osti_entry(status, score=None, ext_id="1234567", cand_year=None):
-    return {
-        "status": status,
-        "queried_by": ["doi"] if status == "hit_id" else ["title"],
-        "score": score,
-        "summary": {
+    return _outcome(
+        "osti", status, score=score,
+        summary={
             "source": "osti",
             "title": "A DOE Report",
             "external_id": ext_id,
             "year": cand_year,
         },
-        "note": None,
-    }
+    )
 
 
 class TestOstiIdIfConfident:
@@ -322,25 +335,23 @@ class TestOstiIdIfConfident:
     def test_not_found_returns_none(self):
         ref = _ref()
         result = LookupResult(per_source={
-            "osti": {"status": "not_found", "queried_by": ["title"],
-                     "score": None, "summary": None, "note": None},
+            "osti": _outcome("osti", "not_found", queried_by=["title"]),
         })
         assert _osti_id_if_confident(ref, result) is None
 
     def test_error_returns_none(self):
         ref = _ref()
         result = LookupResult(per_source={
-            "osti": {"status": "error", "queried_by": ["title"],
-                     "score": None, "summary": None, "note": "retries exhausted"},
+            "osti": _outcome("osti", "error", queried_by=["title"],
+                              note="retries exhausted"),
         })
         assert _osti_id_if_confident(ref, result) is None
 
     def test_disabled_returns_none(self):
         ref = _ref()
         result = LookupResult(per_source={
-            "osti": {"status": "disabled", "queried_by": [],
-                     "score": None, "summary": None,
-                     "note": "session circuit breaker"},
+            "osti": _outcome("osti", "disabled", queried_by=[],
+                              note="session circuit breaker"),
         })
         assert _osti_id_if_confident(ref, result) is None
 
@@ -373,12 +384,10 @@ class TestOstiIdIfConfident:
         ref = _ref(year=2020)
         result = LookupResult(per_source={
             "osti": _osti_entry("hit_title", score=0.85, cand_year=2020),
-            "crossref": {
-                "status": "hit_title", "queried_by": ["title"],
-                "score": 0.98,
-                "summary": {"title": "A Paper", "year": 2020},
-                "note": None,
-            },
+            "crossref": _outcome(
+                "crossref", "hit_title", score=0.98,
+                summary={"title": "A Paper", "year": 2020},
+            ),
         })
         result.recompute_best(ref, 0.80)
         assert result.best_source == "crossref"
@@ -413,9 +422,10 @@ class TestFormatResultWithOstiId:
             best_summary={"doi": "10.2172/1234567", "title": "A DOE Report",
                           "url": "https://openalex.org/W1", "year": 2020},
             per_source={
-                "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                             "score": 1.0, "summary": {"doi": "10.2172/1234567"},
-                             "note": None},
+                "openalex": _outcome(
+                    "openalex", "hit_id", score=1.0,
+                    summary={"doi": "10.2172/1234567"},
+                ),
                 "osti": _osti_entry("hit_id"),
             },
         )
@@ -449,10 +459,10 @@ class TestFormatResultWithOstiId:
                           "url": "https://x.com", "authors": [], "year": 2020,
                           "venue": None},
             per_source={
-                "crossref": {"status": "hit_title", "queried_by": ["title"],
-                             "score": 0.85,
-                             "summary": {"title": "Something Close"},
-                             "note": None},
+                "crossref": _outcome(
+                    "crossref", "hit_title", score=0.85,
+                    summary={"title": "Something Close"},
+                ),
                 "osti": _osti_entry("hit_id"),
             },
         )
@@ -468,10 +478,10 @@ class TestFormatResultWithOstiId:
             best_summary={"title": "Wrong Paper", "url": "https://x.com",
                           "authors": [], "year": 2020, "venue": None},
             per_source={
-                "openalex": {"status": "hit_title", "queried_by": ["title"],
-                             "score": 0.30,
-                             "summary": {"title": "Wrong Paper"},
-                             "note": None},
+                "openalex": _outcome(
+                    "openalex", "hit_title", score=0.30,
+                    summary={"title": "Wrong Paper"},
+                ),
                 "osti": _osti_entry("hit_id"),
             },
         )
@@ -486,9 +496,10 @@ class TestFormatResultWithOstiId:
             best_source="openalex",
             best_summary={"doi": "10.1/x", "title": "A Paper", "url": None},
             per_source={
-                "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                             "score": 1.0, "summary": {"doi": "10.1/x"},
-                             "note": None},
+                "openalex": _outcome(
+                    "openalex", "hit_id", score=1.0,
+                    summary={"doi": "10.1/x"},
+                ),
             },
         )
         out = format_result(ref, r, self.MIN_MATCH, with_osti_id=True)
@@ -501,9 +512,10 @@ class TestFormatResultWithOstiId:
             best_source="openalex",
             best_summary={"doi": "10.1/x", "title": "A Paper", "url": None},
             per_source={
-                "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                             "score": 1.0, "summary": {"doi": "10.1/x"},
-                             "note": None},
+                "openalex": _outcome(
+                    "openalex", "hit_id", score=1.0,
+                    summary={"doi": "10.1/x"},
+                ),
                 "osti": _osti_entry("hit_title", score=0.85, cand_year=2020),
             },
         )

@@ -46,7 +46,7 @@ def _plan_ref_work(
         if entry is None:
             targets.add(src)
             continue
-        st = entry.get("status")
+        st = entry.outcome
         if st == OutcomeKind.DISABLED:
             targets.add(src)
         elif st == OutcomeKind.SKIPPED:

@@ -109,11 +109,10 @@ class TestShowSidecar:
             best_source="openalex",
             id_confirmed=True,
         )
-        r1.per_source["openalex"] = {
-            "status": "hit_id", "queried_by": ["doi"],
-            "score": 1.0, "summary": _summary(doi="10.1/first", title="First"),
-            "note": None,
-        }
+        r1.record_source(
+            "openalex", "hit_id", queried_by="doi",
+            score=1.0, summary=_summary(doi="10.1/first", title="First"),
+        )
         r2 = LookupResult(
             doi_attempted="10.1/second",
             best_summary=_summary(doi="10.1/second", title="Second"),
@@ -121,11 +120,10 @@ class TestShowSidecar:
             best_source="crossref",
             id_confirmed=True,
         )
-        r2.per_source["crossref"] = {
-            "status": "hit_id", "queried_by": ["doi"],
-            "score": 1.0, "summary": _summary(doi="10.1/second", title="Second"),
-            "note": None,
-        }
+        r2.record_source(
+            "crossref", "hit_id", queried_by="doi",
+            score=1.0, summary=_summary(doi="10.1/second", title="Second"),
+        )
 
         sc = tmp_path / "results.json"
         sidecar_mod.write(sc, "p.pdf", refs, {1: r1, 2: r2}, 0.80)
@@ -153,11 +151,10 @@ class TestShowSidecar:
             best_source="openalex",
             id_confirmed=True,
         )
-        r1.per_source["openalex"] = {
-            "status": "hit_id", "queried_by": ["doi"],
-            "score": 1.0, "summary": _summary(doi="10.1/proc", title="Processed"),
-            "note": None,
-        }
+        r1.record_source(
+            "openalex", "hit_id", queried_by="doi",
+            score=1.0, summary=_summary(doi="10.1/proc", title="Processed"),
+        )
         sc = tmp_path / "results.json"
         # Manually write sidecar with ref #2 having result=None.
         data = {
@@ -197,12 +194,10 @@ class TestShowSidecar:
                 best_source="openalex",
                 id_confirmed=True,
             )
-            lr.per_source["openalex"] = {
-                "status": "hit_id", "queried_by": ["doi"],
-                "score": 1.0,
-                "summary": _summary(doi=r.doi, title=r.title),
-                "note": None,
-            }
+            lr.record_source(
+                "openalex", "hit_id", queried_by="doi",
+                score=1.0, summary=_summary(doi=r.doi, title=r.title),
+            )
             results[r.index] = lr
 
         sc = tmp_path / "results.json"
