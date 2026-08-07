@@ -17,22 +17,18 @@ class TestPlanRefWork:
 
     def test_ok_ref_returns_none(self):
         r = LookupResult(id_confirmed=True, display_score=0.99, best_source="openalex")
-        r.per_source["openalex"] = {"status": "hit_id", "queried_by": ["doi"],
-                                    "score": 1.0, "summary": {}}
+        r.record_source("openalex", "hit_id", queried_by="doi", score=1.0, summary={})
         assert planner_mod._plan_ref_work(r, "OK", retry_closest=False, retry_errored=True) is None
 
     def test_closest_returns_none_by_default(self):
         r = LookupResult(display_score=0.85, best_source="crossref")
-        r.per_source["crossref"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.85, "summary": {}}
+        r.record_source("crossref", "hit_title", queried_by="title", score=0.85, summary={})
         assert planner_mod._plan_ref_work(r, "CLOSEST", retry_closest=False, retry_errored=True) is None
 
     def test_closest_returns_untried_when_flagged(self):
         r = LookupResult(display_score=0.85)
-        r.per_source["crossref"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.85, "summary": {}}
-        r.per_source["openalex"] = {"status": "not_found", "queried_by": ["title"],
-                                    "score": None, "summary": None}
+        r.record_source("crossref", "hit_title", queried_by="title", score=0.85, summary={})
+        r.record_source("openalex", "not_found", queried_by="title")
         targets = planner_mod._plan_ref_work(r, "CLOSEST", retry_closest=True, retry_errored=True)
         # openalex was tried (not_found) so not in targets; crossref has a result;
         # everything else missing → in targets
@@ -42,12 +38,9 @@ class TestPlanRefWork:
 
     def test_no_match_retries_untried_and_errored(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["openalex"] = {"status": "hit_title", "queried_by": ["title"],
-                                    "score": 0.30, "summary": {}}
-        r.per_source["crossref"] = {"status": "error", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
-        r.per_source["dblp"] = {"status": "not_found", "queried_by": ["title"],
-                                "score": None, "summary": None}
+        r.record_source("openalex", "hit_title", queried_by="title", score=0.30, summary={})
+        r.record_source("crossref", "error", queried_by="doi")
+        r.record_source("dblp", "not_found", queried_by="title")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
         assert "openalex" not in targets    # already got a title hit
         assert "crossref" in targets        # errored → retry
@@ -57,38 +50,31 @@ class TestPlanRefWork:
 
     def test_errored_not_retried_when_flag_off(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "error", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
+        r.record_source("crossref", "error", queried_by="doi")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" not in targets
 
     def test_disabled_always_retried(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "disabled", "queried_by": [],
-                                    "score": None, "summary": None,
-                                    "note": "session circuit breaker"}
+        r.record_source("crossref", "disabled", note="session circuit breaker")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" in targets
 
     def test_rate_limited_retried_like_error(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
+        r.record_source("crossref", "rate_limited", queried_by="doi")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
         assert "crossref" in targets
 
     def test_rate_limited_not_retried_when_flag_off(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "rate_limited", "queried_by": ["doi"],
-                                    "score": None, "summary": None}
+        r.record_source("crossref", "rate_limited", queried_by="doi")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" not in targets
 
     def test_skipped_always_retried(self):
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "skipped", "queried_by": [],
-                                    "score": None, "summary": None,
-                                    "note": "aborted by user"}
+        r.record_source("crossref", "skipped", note="aborted by user")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=True)
         assert "crossref" in targets
 
@@ -97,8 +83,6 @@ class TestPlanRefWork:
         retried regardless of retry_errored, unlike error/rate_limited.
         """
         r = LookupResult(display_score=0.30)
-        r.per_source["crossref"] = {"status": "skipped", "queried_by": [],
-                                    "score": None, "summary": None,
-                                    "note": "aborted by user"}
+        r.record_source("crossref", "skipped", note="aborted by user")
         targets = planner_mod._plan_ref_work(r, "NO MATCH", retry_closest=False, retry_errored=False)
         assert "crossref" in targets

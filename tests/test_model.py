@@ -63,6 +63,35 @@ class TestSourceOutcomeFromDict:
         assert so.note == "circuit breaker"
 
 
+class TestSourceOutcomeToDict:
+    def test_roundtrip(self):
+        entry = {
+            "status": "hit_title",
+            "queried_by": ["doi", "title"],
+            "score": 0.85,
+            "summary": {"title": "X"},
+            "note": "some note",
+        }
+        so = SourceOutcome.from_dict("openalex", entry)
+        assert so.to_dict() == entry
+
+    def test_to_dict_emits_plain_strings_not_enum_repr(self):
+        so = SourceOutcome(
+            source="openalex", outcome=OutcomeKind.HIT_ID,
+            queried_by=[QueryKind.DOI], score=1.0, summary=None, note=None,
+        )
+        d = so.to_dict()
+        assert d["status"] == "hit_id"
+        assert isinstance(d["status"], str) and not isinstance(d["status"], OutcomeKind)
+        assert d["queried_by"] == ["doi"]
+
+    def test_empty_queried_by_roundtrip(self):
+        entry = {"status": "disabled", "queried_by": [],
+                  "score": None, "summary": None, "note": "circuit breaker"}
+        so = SourceOutcome.from_dict("arxiv", entry)
+        assert so.to_dict() == entry
+
+
 class TestEvidenceLevelValues:
     def test_all_members_are_str(self):
         for member in EvidenceLevel:
@@ -76,8 +105,11 @@ class TestEvidenceLevelValues:
 class TestLookupResultSourceOutcome:
     def test_returns_typed_outcome_for_known_source(self):
         r = LookupResult(per_source={
-            "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                         "score": 1.0, "summary": {"title": "X"}, "note": None},
+            "openalex": SourceOutcome(
+                source="openalex", outcome=OutcomeKind.HIT_ID,
+                queried_by=[QueryKind.DOI], score=1.0,
+                summary={"title": "X"}, note=None,
+            ),
         })
         so = r.source_outcome("openalex")
         assert so is not None
@@ -92,8 +124,11 @@ class TestLookupResultSourceOutcome:
 
     def test_does_not_mutate_per_source(self):
         r = LookupResult(per_source={
-            "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                         "score": 1.0, "summary": {"title": "X"}, "note": None},
+            "openalex": SourceOutcome(
+                source="openalex", outcome=OutcomeKind.HIT_ID,
+                queried_by=[QueryKind.DOI], score=1.0,
+                summary={"title": "X"}, note=None,
+            ),
         })
         original = dict(r.per_source)
         r.source_outcome("openalex")

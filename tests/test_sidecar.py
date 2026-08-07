@@ -3,6 +3,7 @@ import json
 import pytest
 
 from ref_checker.extract import Reference
+from ref_checker.model import SourceOutcome
 from ref_checker.results import LookupResult
 from ref_checker import sidecar
 
@@ -148,20 +149,30 @@ class TestResultRoundtrip:
     def test_per_source_roundtrip(self):
         r = LookupResult()
         r.per_source = {
-            "openalex": {"status": "hit_id", "queried_by": ["doi"],
-                         "score": 1.0, "summary": {"title": "X"}, "note": None},
-            "crossref": {"status": "not_found", "queried_by": ["doi", "title"],
-                         "score": None, "summary": None, "note": None},
-            "dblp":     {"status": "error", "queried_by": ["title"],
-                         "score": None, "summary": None,
-                         "note": "retries exhausted"},
-            "arxiv":    {"status": "disabled", "queried_by": [],
-                         "score": None, "summary": None,
-                         "note": "session circuit breaker"},
+            "openalex": SourceOutcome.from_dict("openalex", {
+                "status": "hit_id", "queried_by": ["doi"],
+                "score": 1.0, "summary": {"title": "X"}, "note": None}),
+            "crossref": SourceOutcome.from_dict("crossref", {
+                "status": "not_found", "queried_by": ["doi", "title"],
+                "score": None, "summary": None, "note": None}),
+            "dblp": SourceOutcome.from_dict("dblp", {
+                "status": "error", "queried_by": ["title"],
+                "score": None, "summary": None,
+                "note": "retries exhausted"}),
+            "arxiv": SourceOutcome.from_dict("arxiv", {
+                "status": "disabled", "queried_by": [],
+                "score": None, "summary": None,
+                "note": "session circuit breaker"}),
         }
         d = sidecar.result_to_dict(r, 0.80)
         r2 = sidecar.result_from_dict(d)
         assert r2.per_source == r.per_source
+        # The serialized boundary must be plain JSON-native strings, not
+        # enum reprs, so external consumers/dashboards see the same shape
+        # as before this refactor.
+        assert d["per_source"]["openalex"]["status"] == "hit_id"
+        assert isinstance(d["per_source"]["openalex"]["status"], str)
+        assert json.dumps(d)  # round-trips through real json encoding too
 
     def test_evidence_roundtrip(self):
         from ref_checker.model import EvidenceLevel

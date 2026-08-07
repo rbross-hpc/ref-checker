@@ -5,7 +5,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 
-from .model import EvidenceLevel, OutcomeKind, SourceOutcome
+from .model import EvidenceLevel, OutcomeKind, QueryKind, SourceOutcome
 from .similarity import title_ratio
 
 _YEAR_MISMATCH_PENALTY = 0.10
@@ -67,20 +67,16 @@ class LookupResult:
     dead_urls: list[tuple[str, str]] = field(default_factory=list)
     exhausted_sources: list[str] = field(default_factory=list)
     url_liveness_check: bool = False
-    per_source: dict[str, dict] = field(default_factory=dict)
+    per_source: dict[str, SourceOutcome] = field(default_factory=dict)
     evidence: EvidenceLevel | None = None  # additive; see recompute_best
 
     def source_outcome(self, source: str) -> SourceOutcome | None:
-        """Typed view over per_source[source], or None if never queried.
+        """Return per_source[source], or None if never queried.
 
-        Additive convenience accessor for callers that want attribute
-        access (SourceOutcome) instead of raw dict.get() calls against
-        per_source — does not replace per_source as the underlying storage.
+        Thin convenience wrapper kept for API stability — per_source
+        entries are already SourceOutcome instances.
         """
-        entry = self.per_source.get(source)
-        if entry is None:
-            return None
-        return SourceOutcome.from_dict(source, entry)
+        return self.per_source.get(source)
 
     def record_source(
         self,
@@ -94,7 +90,7 @@ class LookupResult:
     ) -> None:
         """Merge a per-source outcome into per_source[source].
 
-        - queried_by is appended (deduped) to entry["queried_by"].
+        - queried_by is appended (deduped) to entry.queried_by.
         - score/summary are stored only if the new score is strictly better
           than what's already there (or nothing is there yet).
         - status is kept per _STATUS_PRECEDENCE (higher wins). This means
@@ -102,38 +98,42 @@ class LookupResult:
           from a different mode against the same source.
         - note overwrites when non-None.
         """
+        status = OutcomeKind(status) if not isinstance(status, OutcomeKind) else status
         entry = self.per_source.get(source)
         note_may_overwrite = True
         if entry is None:
-            entry = {
-                "status": status,
-                "queried_by": [],
-                "score": None,
-                "summary": None,
-                "note": None,
-            }
+            entry = SourceOutcome(
+                source=source,
+                outcome=status,
+                queried_by=[],
+                score=None,
+                summary=None,
+                note=None,
+            )
             self.per_source[source] = entry
         else:
-            old_rank = _STATUS_PRECEDENCE.get(entry.get("status"), -1)
+            old_rank = _STATUS_PRECEDENCE.get(entry.outcome, -1)
             new_rank = _STATUS_PRECEDENCE.get(status, -1)
             if new_rank > old_rank:
-                entry["status"] = status
+                entry.outcome = status
             elif new_rank < old_rank:
                 # Do not let a lower-precedence status clobber the note
                 # that explained the higher-precedence status.
                 note_may_overwrite = False
 
-        if queried_by and queried_by not in entry["queried_by"]:
-            entry["queried_by"].append(queried_by)
+        if queried_by:
+            qk = QueryKind(queried_by)
+            if qk not in entry.queried_by:
+                entry.queried_by.append(qk)
         if score is not None:
-            prior = entry.get("score")
+            prior = entry.score
             if prior is None or score > prior:
-                entry["score"] = score
-                entry["summary"] = summary
-        elif summary is not None and entry.get("summary") is None:
-            entry["summary"] = summary
+                entry.score = score
+                entry.summary = summary
+        elif summary is not None and entry.summary is None:
+            entry.summary = summary
         if note is not None and note_may_overwrite:
-            entry["note"] = note
+            entry.note = note
 
     def recompute_best(self, ref, min_match: float) -> None:
         """Re-derive best_summary / display_score / best_source and friends from per_source.
@@ -156,7 +156,7 @@ class LookupResult:
 
         has_inconclusive_source = False
         for src, entry in self.per_source.items():
-            status = entry.get("status")
+            status = entry.outcome
             if status in (OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED):
                 if src not in self.exhausted_sources:
                     self.exhausted_sources.append(src)
@@ -166,7 +166,7 @@ class LookupResult:
             ):
                 has_inconclusive_source = True
             if status == OutcomeKind.HIT_ID:
-                qby = entry.get("queried_by") or []
+                qby = entry.queried_by or []
                 if "doi" in qby and src not in self.doi_found_in:
                     self.doi_found_in.append(src)
                 if "arxiv_id" in qby and src not in self.arxiv_found_in:
@@ -174,12 +174,12 @@ class LookupResult:
 
         id_hits = [
             (src, entry) for src, entry in self.per_source.items()
-            if entry.get("status") == OutcomeKind.HIT_ID and entry.get("summary")
+            if entry.outcome == OutcomeKind.HIT_ID and entry.summary
         ]
         if id_hits:
             id_hits.sort(key=lambda kv: (kv[0] in _LIVENESS_SOURCES, kv[0]))
             best_src, best_entry = id_hits[0]
-            summary = best_entry["summary"]
+            summary = best_entry.summary
             self.best_summary = summary
             self.best_source = best_src
             self.id_confirmed = True
@@ -214,15 +214,15 @@ class LookupResult:
 
         title_hits = [
             (src, entry) for src, entry in self.per_source.items()
-            if entry.get("status") == OutcomeKind.HIT_TITLE and entry.get("summary") is not None
+            if entry.outcome == OutcomeKind.HIT_TITLE and entry.summary is not None
         ]
         best_score = -1.0
         best_src = None
         best_summary = None
         best_year_note = None
         for src, entry in title_hits:
-            summary = entry["summary"]
-            raw_score = entry.get("score")
+            summary = entry.summary
+            raw_score = entry.score
             if raw_score is None:
                 continue
             ref_year = ref.year

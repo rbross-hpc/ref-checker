@@ -10,6 +10,7 @@ import pytest
 from ref_checker import engine as engine_mod
 from ref_checker import runtime as runtime_mod
 from ref_checker.extract import Reference
+from ref_checker.model import OutcomeKind, QueryKind, SourceOutcome
 from ref_checker.results import LookupResult
 
 
@@ -92,9 +93,9 @@ class TestPerSource:
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
 
-        assert result.per_source["openalex"]["status"] == "hit_id"
-        assert result.per_source["openalex"]["queried_by"] == ["doi"]
-        assert result.per_source["openalex"]["summary"]["doi"] == "10.1/test"
+        assert result.per_source["openalex"].outcome == "hit_id"
+        assert result.per_source["openalex"].queried_by == ["doi"]
+        assert result.per_source["openalex"].summary["doi"] == "10.1/test"
         # crossref should not have been called — we got an ID hit first
         assert "crossref" not in result.per_source
         assert result.id_confirmed
@@ -108,7 +109,7 @@ class TestPerSource:
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
 
-        assert result.per_source["openalex"]["status"] == "error"
+        assert result.per_source["openalex"].outcome == "error"
         assert "openalex" in result.exhausted_sources
 
     def test_records_rate_limited_when_source_exhausts_on_rate_limit(self, stub_sources):
@@ -122,7 +123,7 @@ class TestPerSource:
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80)
 
-        assert result.per_source["openalex"]["status"] == "rate_limited"
+        assert result.per_source["openalex"].outcome == "rate_limited"
         # rate_limited counts toward exhausted_sources exactly like error —
         # both mean "we did not get real information", just different cause.
         assert "openalex" in result.exhausted_sources
@@ -138,7 +139,7 @@ class TestPerSource:
         ref = _ref(doi="10.1/test")
         result = engine_mod.lookup_reference(ref, min_match=0.80, health=health)
 
-        assert result.per_source["openalex"]["status"] == "disabled"
+        assert result.per_source["openalex"].outcome == "disabled"
 
 
 # --------------------------------------------------------------------------
@@ -244,8 +245,10 @@ class TestSourcesToQuery:
 
     def test_prior_per_source_preserved(self, stub_sources):
         prior = LookupResult()
-        prior.per_source["openalex"] = {"status": "not_found", "queried_by": ["title"],
-                                        "score": None, "summary": None}
+        prior.per_source["openalex"] = SourceOutcome(
+            source="openalex", outcome=OutcomeKind.NOT_FOUND,
+            queried_by=[QueryKind.TITLE], score=None, summary=None, note=None,
+        )
 
         stub_sources["crossref"].search_by_title = lambda t, ctx: (_summary(title=t), 0.95)
 
@@ -255,8 +258,8 @@ class TestSourcesToQuery:
             sources_to_query={"crossref"},
             prior_result=prior,
         )
-        assert result.per_source["openalex"]["status"] == "not_found"
-        assert result.per_source["crossref"]["status"] == "hit_title"
+        assert result.per_source["openalex"].outcome == "not_found"
+        assert result.per_source["crossref"].outcome == "hit_title"
 
 
 # --------------------------------------------------------------------------

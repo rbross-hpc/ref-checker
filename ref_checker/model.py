@@ -15,8 +15,12 @@ lookup actually established (confirmed identifier vs. strong metadata match
 vs. live-resource-only vs. ...), computed alongside the existing coarse
 OK/CLOSEST/NO MATCH status rather than replacing it.
 
-``SourceOutcome`` is an optional typed accessor over one ``per_source[name]``
-dict entry, for callers that want attribute access instead of dict.get().
+``SourceOutcome`` is the actual in-memory representation of one
+``per_source[name]`` entry (``LookupResult.per_source: dict[str,
+SourceOutcome]``) — not just a decorative read-only accessor. Dict
+conversion is restricted to the sidecar's JSON serialization boundary
+(``sidecar.py``'s ``result_to_dict``/``result_from_dict``, via
+``SourceOutcome.to_dict``/``from_dict``).
 """
 from __future__ import annotations
 
@@ -67,7 +71,15 @@ class EvidenceLevel(str, Enum):
 
 @dataclass
 class SourceOutcome:
-    """Typed view over one ``per_source[name]`` dict entry."""
+    """One source's accumulated outcome for one reference.
+
+    Mutable — ``LookupResult.record_source()`` merges new query attempts
+    into an existing entry in place (status precedence, best-score-wins,
+    deduped ``queried_by`` append; see its docstring). ``summary`` stays an
+    untyped ``dict | None`` for now (the provider-summary shape produced
+    by every source adapter) — introducing a typed ``Candidate`` for it is
+    a separate, larger follow-on (see BACKLOG.md).
+    """
 
     source: str
     outcome: OutcomeKind
@@ -86,3 +98,12 @@ class SourceOutcome:
             summary=entry.get("summary"),
             note=entry.get("note"),
         )
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.outcome.value,
+            "queried_by": [q.value for q in self.queried_by],
+            "score": self.score,
+            "summary": self.summary,
+            "note": self.note,
+        }
