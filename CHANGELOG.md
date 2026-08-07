@@ -8,6 +8,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`Reference` index parsing silently accepted invalid values**:
+  `Reference.from_dict` and `load_references_from_list`'s explicit-index
+  path both used bare `int(...)` conversion, which silently truncated
+  floats (`1.5` → `1`), coerced booleans (`bool` is an `int` subclass, so
+  `True` → `1`), and accepted non-positive values (`0`, negative
+  integers) — despite `schema.md` documenting `index` as a positive,
+  1-based integer. `from_dict` also defaulted a missing `index` to `0`
+  rather than requiring one. Both now go through a shared
+  `_validate_index()` helper (native `int`, not `bool`, `>= 1`) and raise
+  `ValueError` on anything else — subject to `load_references_from_list`'s
+  existing `strict`/permissive branching and duplicate-index rejection,
+  unchanged. `Reference.from_dict` now *requires* a valid, pre-resolved
+  `index` already present in its input dict; each caller resolves one
+  appropriately for its own trust level:
+  - `load_references_from_list` already pre-resolved an index per entry
+    (explicit or 1-based position) before calling `from_dict`; unchanged
+    except for the stricter check.
+  - `_call_llm` (LLM-extracted references, untrusted input) gains a new
+    `_resolve_llm_indices()` pre-pass mirroring the loader's 1-based
+    fallback, but — unlike the loader's strict mode — an invalid or
+    duplicate LLM-supplied index falls back to that entry's list position
+    rather than raising, so an LLM index quirk doesn't fail the whole
+    extraction and trigger a retry.
+  - `cli/show.py`'s sidecar display now passes the sidecar's own
+    (already-validated) outer index key into `from_dict`, rather than
+    trusting the nested `ref` dict's own `"index"` field, which a
+    hand-edited sidecar could omit or leave inconsistent with the outer
+    key.
+  - `load_refs_cache` needed no code change: its existing
+    `try/except Exception: return None, "corrupt"` around
+    `Reference.from_dict` now correctly treats a cache with a
+    missing/invalid per-entry index as `"corrupt"` instead of silently
+    accepting it as `"valid"` with a coerced-to-`0` index.
+  40 new tests added (float/bool/zero/negative index rejection at both
+  `from_dict` and the loader; `_resolve_llm_indices` fallback behavior;
+  sidecar outer-key-authoritative display; corrupted-refs-cache
+  detection). No existing fixture data needed changes — every committed
+  fixture already used valid positive sequential indices.
+
 - **Flaky `test_registry.py::test_different_threads_get_different_contexts_for_same_source`**
   (test-only, no production code change): the test keyed a results dict by
   `threading.get_ident()`, but native OS thread ids can be recycled once a

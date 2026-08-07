@@ -59,7 +59,7 @@ class TestFixtureIntegrity:
         for i, raw in enumerate(data, start=1):
             ref = Reference.from_dict(raw)
             assert isinstance(ref, Reference)
-            assert ref.index >= 0
+            assert ref.index > 0
 
     @pytest.mark.parametrize("path", _all_fixture_paths(),
                              ids=lambda p: p.name)

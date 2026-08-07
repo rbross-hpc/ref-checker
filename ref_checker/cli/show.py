@@ -86,7 +86,13 @@ def _show_sidecar(data: dict, min_match: float, with_osti_id: bool) -> int:
         ref_dict = entry.get("ref") or {}
         result_dict = entry.get("result")
         try:
-            ref = Reference.from_dict(ref_dict)
+            # The sidecar's own outer key (idx) is already validated (see
+            # the int(k) parse above) and is authoritative over whatever
+            # the nested ref dict does or doesn't say about its own index
+            # — a hand-edited or corrupted sidecar shouldn't be able to
+            # produce a Reference with a missing/mismatched index just
+            # because the nested "ref" object lacks or disagrees on one.
+            ref = Reference.from_dict({**ref_dict, "index": idx})
         except Exception as exc:
             print(f"Warning: could not reconstruct ref #{idx}: {exc}", file=sys.stderr)
             continue

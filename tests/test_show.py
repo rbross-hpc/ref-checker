@@ -212,6 +212,50 @@ class TestShowSidecar:
             positions[i] = out.find(f"Ref {i}")
         assert positions[1] < positions[2] < positions[3] < positions[5]
 
+    def test_show_sidecar_outer_key_authoritative_over_nested_ref_index(
+        self, tmp_path, capsys,
+    ):
+        """A hand-edited sidecar whose nested ref dict is missing (or
+        disagrees with) its own "index" field must still display correctly
+        using the sidecar's own outer key -- Reference.from_dict no longer
+        tolerates a missing index on its own, so show must supply it.
+        """
+        ref = _ref(index=1, title="Nested Index Missing", doi="10.1/x")
+        ref_dict = ref.to_dict()
+        del ref_dict["index"]
+
+        r1 = LookupResult(
+            doi_attempted="10.1/x",
+            best_summary=_summary(doi="10.1/x", title="Nested Index Missing"),
+            display_score=1.0,
+            best_source="openalex",
+            id_confirmed=True,
+        )
+        r1.record_source(
+            "openalex", "hit_id", queried_by="doi",
+            score=1.0, summary=_summary(doi="10.1/x", title="Nested Index Missing"),
+        )
+
+        sc = tmp_path / "results.json"
+        data = {
+            "schema_version": 4,
+            "pdf": "p.pdf",
+            "refs_hash": "deadbeef",
+            "references": {
+                "1": {
+                    "ref": ref_dict,
+                    "result": sidecar_mod.result_to_dict(r1, 0.80),
+                },
+            },
+        }
+        sc.write_text(json.dumps(data, indent=2))
+
+        rc = show_mod.show(sc)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[1]" in out
+        assert "Nested Index Missing" in out
+
 
 class TestEndOfRunHint:
     def test_hint_line_prints_when_sidecar_used(self, tmp_path, capsys, monkeypatch):
