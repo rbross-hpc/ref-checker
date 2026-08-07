@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Flaky `test_runner.py::TestThreadLocalSourceContexts::test_concurrent_run_never_shares_one_session_across_two_threads`**
+  (test-only, no production code change): the test hoped `jobs=3` with 9
+  quick no-op stubbed references would incidentally exercise more than
+  one real worker thread, then asserted on it. That's not guaranteed —
+  `ThreadPoolExecutor` only spawns a new thread on `submit()` if no
+  existing worker is already idle, so with zeroed rate-limit delays and a
+  near-instant stub, a single thread could finish task 1 and go idle
+  before the pool ever needed a second one, tripping the test's own
+  `"test didn't actually exercise more than one worker thread"` guard.
+  Fixed by forcing the first 3 calls into the stub to block on a
+  `threading.Barrier(3)` — `runner.py`'s bounded submission window
+  (`jobs + 1`) already guarantees the first 3 dispatched tasks land on 3
+  distinct freshly-spawned threads, so the barrier makes that existing
+  guarantee observable instead of relying on incidental scheduling.
+  Stress-tested 50x locally with no failures.
+  `ThreadLocalSourceContexts` itself was already correct (same
+  conclusion reached when fixing the sibling flaky
+  `test_registry.py::test_different_threads_get_different_contexts_for_same_source`,
+  below) — only the test harness was buggy.
+
 ### Changed
 
 - **`ScholarlySource`/`LivenessSource` Protocols (`sources/base.py`) now
