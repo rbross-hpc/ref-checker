@@ -191,6 +191,63 @@ class TestMirrorFailover:
         assert ei.value.retry_after == 7.0
         assert len(calls) == len(dblp._BASES)
 
+    def test_both_mirrors_503_raises_rate_limited_with_retry_after(self, monkeypatch):
+        from ref_checker.sources import dblp
+        from ref_checker.errors import RateLimited
+
+        calls: list[str] = []
+
+        class _Session:
+            headers: dict = {}
+
+            def get(self, url, params=None, timeout=None):
+                calls.append(url)
+                return _FakeResponse(503, headers={"Retry-After": "12"})
+
+        from ref_checker.sources.base import SourceContext
+
+        ctx = SourceContext(session=_Session())
+        with pytest.raises(RateLimited) as ei:
+            dblp.search_by_title("mapreduce", ctx)
+        assert ei.value.retry_after == 12.0
+        assert len(calls) == len(dblp._BASES)
+
+    def test_503_from_primary_still_fails_over(self, monkeypatch):
+        from ref_checker.sources import dblp
+
+        primary_url, mirror_url = dblp._BASES
+
+        good_payload = {
+            "result": {
+                "hits": {
+                    "hit": [
+                        {"info": {"title": "Y.", "year": "2021",
+                                  "venue": "V", "doi": "10.1/z",
+                                  "url": "https://dblp.org/z",
+                                  "key": "k",
+                                  "authors": {"author": [{"text": "A B"}]}}}
+                    ]
+                }
+            }
+        }
+        calls: list[str] = []
+
+        class _Session:
+            headers: dict = {}
+
+            def get(self, url, params=None, timeout=None):
+                calls.append(url)
+                if url == primary_url:
+                    return _FakeResponse(503, headers={})
+                return _FakeResponse(200, good_payload)
+
+        from ref_checker.sources.base import SourceContext
+
+        ctx = SourceContext(session=_Session())
+        summary, sim = dblp.search_by_title("y", ctx)
+        assert summary is not None
+        assert calls == [primary_url, mirror_url]
+
     def test_connection_error_on_primary_still_fails_over(self, monkeypatch):
         import requests
         from ref_checker.sources import dblp

@@ -9,7 +9,7 @@ import requests
 from ..errors import RateLimited
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, parse_retry_after, raise_for_rate_limit
 from .base import SourceContext
 
 SOURCE_NAME = "dblp"
@@ -89,7 +89,16 @@ def search_by_title(
             if resp.status_code in (404, 410):
                 return None, None
             if resp.status_code == 503:
-                last_exc = requests.HTTPError(f"503 for {base}", response=resp)
+                retry_after = parse_retry_after(resp)
+                last_exc = RateLimited(
+                    retry_after=retry_after,
+                    message=f"503 Service Unavailable from {base}"
+                    + (
+                        f" (Retry-After={retry_after}s)"
+                        if retry_after is not None
+                        else ""
+                    ),
+                )
                 continue
             raise_for_rate_limit(resp, SOURCE_NAME)
             resp.raise_for_status()

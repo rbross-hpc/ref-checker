@@ -107,6 +107,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   comparisons. No output change; a regression test
   (`TestFormatResultMatchesStatusLabel`) guards against the two
   implementations silently diverging again.
+- **DBLP ignored `Retry-After` on 503**: a 503 from a DBLP mirror was
+  previously wrapped in a bare `requests.HTTPError` and only used to
+  decide "try the next mirror" — any `Retry-After` hint on that response
+  was discarded. Now parsed via `_http.parse_retry_after` and carried as
+  `RateLimited(retry_after=...)`, same as the existing 429 path, so if
+  both mirrors are unavailable the outer retry loop honors DBLP's
+  requested backoff instead of falling back to the default schedule.
+  Still tries the next mirror first when one mirror 503s; unchanged when
+  either mirror responds successfully.
 
 ## [0.2.0] - 2026-08-06
 
