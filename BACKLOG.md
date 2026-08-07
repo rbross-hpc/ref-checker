@@ -34,6 +34,57 @@ to the existing `references/schema.md` (which covers the input refs JSON).
 Only worth doing if programmatic sidecar consumers outside `ref-checker`
 itself become a thing.
 
+## Architecture / type safety
+
+### Make SourceOutcome/typed per_source the real in-memory representation
+
+`SourceOutcome` (`model.py`) is currently a decorative, unused-in-the-pipeline
+typed accessor: `LookupResult.per_source` is `dict[str, dict]`, and every
+production read/write (`record_source`, `recompute_best`, `planner.py`,
+`format.py`, `sidecar.py`) goes through raw dicts end to end —
+`LookupResult.source_outcome()` is never actually called anywhere except
+its own tests. This means a typo'd status string, an unknown field, or an
+invalid status/summary combination is not caught by the type system.
+
+Next step: make `per_source: dict[str, SourceOutcome]` (plus a typed
+`Candidate` for `best_summary`) the actual in-memory representation, and
+restrict dict conversion to `sidecar.py`'s serialization boundary and
+JSON-reporting code. This is expected to be behavior-preserving. Worth
+doing before introducing mypy/pyright, since a type checker would
+currently see through most of this code but lose all value the moment it
+reaches a `dict[str, Any]`.
+
+### Extend source Protocols to cover the full adapter contract
+
+`ScholarlySource`/`LivenessSource` (`sources/base.py`) declare
+`SOURCE_NAME`/`DEFAULT_DELAY`/`SUPPORTED_QUERY_KINDS`, but `build_context()`
+— relied on by `registry.py` and `engine.py:_ctx_for()` for every source —
+isn't part of either Protocol. The structural contract tests
+(`test_source_contract.py`) also only check name/attribute presence
+(`hasattr`, declared-kind-has-matching-function) and a couple of
+scalar-value equalities (`DEFAULT_DELAYS[name] == DEFAULT_DELAY`) — not
+function signatures, return types, or that every lookup function actually
+accepts the mandatory trailing `ctx: SourceContext` parameter the
+docstring in `base.py` claims is required.
+
+Either add `build_context()` (and ideally the lookup/`check_url`
+signatures) to the Protocols, or replace source modules with small adapter
+objects implementing one complete Protocol — worth reconsidering given how
+much behavior the source contract now carries.
+
+### Stricter reference index validation
+
+`extract.py`'s index parsing uses bare `int(...)` conversion (both in
+`Reference.from_dict` and the loader's duplicate-detection path), which
+silently accepts floats (`1.5` → `1`, truncated), booleans (`bool` is an
+`int` subclass, so `True` → `1`), and non-positive values (`0`, negative
+integers) — the only rejection path is a `TypeError`/`ValueError` from
+non-numeric input, or an exact duplicate after conversion. Minor compared
+to the identity-collision bug this loader already fixed (duplicate
+detection is the property that actually matters for that), but easy to
+tighten now: accept only a real positive integer, or optionally a string
+containing only a positive base-10 integer.
+
 ## Matching quality
 
 ### Checked-in matching-quality benchmark corpus
@@ -90,4 +141,7 @@ remainder of the session, and retry the current request unauthenticated
 (Semantic Scholar's public tier has stricter rate limits but still works).
 Requires a session-scoped mutable flag in `sources/semanticscholar.py` (or
 threading a `SourceHealth`-like handle through), plus a test that the second
-call omits the header once the flag is tripped.
+call omits the header once the flag is tripped. `SourceContext.credentials`
+(added by the SourceContext work) is now a natural home for this scoped
+mutable "key is bad" flag, since it's already built once per run/thread and
+threaded through every call.
