@@ -54,22 +54,46 @@ None` is a drop-in type swap).
 
 ## Matching quality
 
-### Author/venue scoring for same-series and generic-title disambiguation
+### Author/venue scoring investigated, not viable as a same-series disambiguator
 
-`tests/fixtures/matching_benchmark.json` (see
-[docs/matching.md](docs/matching.md#matching-quality-benchmark)) quantifies
-a real gap: papers in a numbered series or Part I/II pair by the same
-authors (e.g. real cases mined from `wan_e3smv2.json`/`zfp_spectral.json`),
-and unrelated papers with generically similar phrasing (e.g. "A Survey of
-X Techniques for Y"), can score in the "ambiguous" band on title alone —
-8 of the corpus's 41 checked-in cases (`same_author_similar` +
-`generic_titles`, tagged `KNOWN ACCEPTED GAP`). No outright false
-*confirmations* occur in the current corpus, but author/venue agreement is
-the natural next signal to add to push these down toward a clean reject.
-Any such change should be validated against the benchmark corpus (extend
-it with more cases as needed) rather than by intuition, and should update
-the corpus's checked-in baseline classifications/confusion-matrix counts
-where they intentionally change.
+The previous version of this item proposed author/venue agreement as the
+next signal to push `same_author_similar`/`generic_titles` "ambiguous"
+cases (see `tests/fixtures/matching_benchmark.json` /
+[docs/matching.md](docs/matching.md#matching-quality-benchmark)) down
+toward a clean reject. Pulling the real author/venue data behind the
+`same_author_similar` category (from `wan_e3smv2.json`, `zfp_spectral.json`,
+`klasky_5.json`) shows this doesn't hold up:
+
+- Every case in that category is a same-author pair by construction, so
+  author overlap is uniformly high across both the currently-ambiguous
+  cases *and* the cases that already correctly reject today.
+- The sharpest counterexample: `sameauthor-animation-arctic-vs-china`
+  (identical authors, identical venue `Zenodo`, identical year) is two
+  genuinely different papers (Arctic vs. southeast China) that the
+  existing title-only scorer *already rejects correctly*. Treating
+  author/venue agreement as a positive signal would risk **breaking**
+  that correct rejection, not fixing anything.
+- The two cases that actually land "ambiguous"
+  (`sameauthor-aerosol-activation-parts`, `sameauthor-zfp-version-vs-faq`)
+  have no author/venue signal distinguishing them from the
+  already-correctly-rejected cases in the same category — what actually
+  sets them apart is title *structure*: one title is a near-superset of
+  the other (e.g. `"zfp version 1.0.1"` vs. `"zfp version 1.0.1: FAQ
+  #20"`), which `SequenceMatcher` naturally scores very high on raw
+  character overlap regardless of authorship.
+- For `generic_titles`, the ambiguous cases are synthetic pairs with no
+  author/venue fields in the benchmark schema at all (`ref_title`/
+  `ref_year`/`cand_title`/`cand_year` only), so there's no real data to
+  validate an author/venue signal against there either.
+
+Not pursuing author/venue scoring as a fix for either category. A
+narrower, untried alternative for the `same_author_similar` false-reject
+risk: detect numbered/parted/versioned title-suffix patterns (`Part
+I`/`II`, `V1`/`V2`, `: FAQ #N`, trailing numerals) as a distinct signal —
+this is what actually separates the ambiguous cases from the correctly-
+rejected ones in the real data, unlike author/venue. Not scoped or
+committed to here; would need its own benchmark cases and design pass if
+picked up.
 
 ### Abbreviation/alias handling for bare project names
 

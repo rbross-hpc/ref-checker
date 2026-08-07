@@ -42,14 +42,21 @@ checked-in baseline with justification).
   alone can't bridge this; see the benchmark's `abbreviated` category (cases
   tagged `KNOWN FALSE REJECT`).
 - **No author/venue scoring** (see "Authors are not part of the similarity
-  score" above). This is the single biggest source of the benchmark's
-  `same_author_similar` and `generic_titles` categories landing in
-  "ambiguous" rather than a clean reject: two different papers in a numbered
-  series, or two unrelated papers with generically similar phrasing (e.g. "A
-  Survey of X Techniques for Y"), can score close enough to `min_match` that
-  only author/venue agreement could reliably tell them apart. These are
-  checked-in as known, accepted gaps in the benchmark (cases tagged `KNOWN
-  ACCEPTED GAP`) rather than fixed here — see `BACKLOG.md`.
+  score" above). This is the source of the benchmark's `same_author_similar`
+  and `generic_titles` categories landing in "ambiguous" rather than a clean
+  reject for a handful of cases (two different papers in a numbered series,
+  or two unrelated papers with generically similar phrasing, e.g. "A Survey
+  of X Techniques for Y") — but adding author/venue agreement as a fix was
+  investigated and found **not viable**: in the real `same_author_similar`
+  data, author/venue overlap is uniformly high across both the ambiguous
+  cases and the cases that already correctly reject today (e.g. two
+  Zenodo-hosted animations by the same two authors, same year, genuinely
+  different regions — already a correct reject), so treating it as a
+  positive signal would risk breaking correct rejections rather than fixing
+  ambiguous ones. See `BACKLOG.md` for the finding and an untried
+  alternative (title-structure heuristics for numbered/parted/versioned
+  suffixes). These cases remain checked-in as known, accepted gaps in the
+  benchmark (cases tagged `KNOWN ACCEPTED GAP`).
 - **Preprint retitling.** A paper's title can change materially between
   preprint and published versions (verified real example in the benchmark's
   `preprint_vs_published` category); title-only scoring under-confirms these

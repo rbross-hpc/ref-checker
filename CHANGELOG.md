@@ -40,6 +40,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gap is a new, separate `BACKLOG.md` item. `docs/matching.md`'s "Known
   limitations" section rewritten around the corpus's actual findings.
 
+### Investigated (not implemented)
+
+- **Author/venue scoring for `same_author_similar`/`generic_titles`
+  disambiguation**: the backlog item proposed author/venue agreement as
+  the next signal to push these benchmark categories' "ambiguous" cases
+  toward a clean reject. Pulling the real author/venue data behind the
+  `same_author_similar` category (`wan_e3smv2.json`, `zfp_spectral.json`,
+  `klasky_5.json`) shows this doesn't hold: every case in that category is
+  a same-author pair by construction, so author/venue overlap is
+  uniformly high across both the ambiguous cases and the cases that
+  already correctly reject today. The sharpest counterexample is
+  `sameauthor-animation-arctic-vs-china` — identical authors, identical
+  venue (`Zenodo`), identical year, and two genuinely different papers
+  (Arctic vs. southeast China) that the existing title-only scorer already
+  rejects correctly; treating author/venue agreement as a positive signal
+  risks breaking that correct rejection rather than fixing an ambiguous
+  one. The two cases that do land "ambiguous" differ from the correctly-
+  rejected cases by title *structure* (one title is a near-superset of the
+  other), not authorship. Not implemented; `BACKLOG.md`'s item rewritten
+  to record this finding and note an untried, narrower alternative
+  (numbered/parted/versioned title-suffix detection) instead.
+
 ### Fixed
 
 - **Flaky `test_runner.py::TestThreadLocalSourceContexts::test_concurrent_run_never_shares_one_session_across_two_threads`**
