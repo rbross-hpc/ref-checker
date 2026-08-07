@@ -107,20 +107,26 @@ talk to this source" (the context) separate from "how often/how
 resiliently to talk to any source" (the engine).
 
 `sources/registry.py:build_all_contexts()` builds one context per source
-(`SCHOLARLY_SOURCES + LIVENESS_SOURCES`). `runner.py:check_references()`
-calls this **once per run** and threads the resulting `contexts` dict
-through `engine.py:lookup_reference()` for every reference in that run —
-so every reference reuses the same underlying session (and thus
-connection pool) per source, rather than each HTTP call opening a fresh
-one (scholarly sources) or none at all (liveness sources, which
-previously called bare `requests.head`/`requests.get` with no session).
-`engine.py`'s `call()` and `call_liveness()` both use the same
-`_ctx_for(src)` lazy-or-shared lookup, so this works identically for
-scholarly and liveness sources.
+(`SCHOLARLY_SOURCES + LIVENESS_SOURCES`) as a plain `dict`. Direct-call
+test paths and `cli/main.py`'s single-shot `ref-checker lookup <source>`
+subcommand use this (or build one throwaway `build_context()` directly)
+since there's only one call to make, with no concurrent worker threads in
+the picture.
 
-`cli/main.py`'s single-shot `ref-checker lookup <source>` subcommand
-builds one throwaway context immediately before dispatching, since there's
-only one call to make.
+`runner.py:check_references()` instead builds a
+`sources/registry.py:ThreadLocalSourceContexts` **once per run** and
+threads it through `engine.py:lookup_reference()` for every reference —
+this gives each *worker thread* its own context per source (rather than
+one shared globally), while every reference dispatched to a given thread
+still reuses that thread's session per source. See
+[lookup-engine.md](lookup-engine.md#threading-model-for-sourcecontext) for
+why a single context shared across threads is not safe (`requests.Session`
+mutates its cookie jar on every request/response, unsynchronized across
+threads) and how sessions are closed deterministically at end-of-run.
+`engine.py`'s `call()` and `call_liveness()` both use the same
+`_ctx_for(src)` lookup regardless of which kind of `contexts` object they
+were handed — both a plain `dict` and a `ThreadLocalSourceContexts`
+satisfy the same `.get(name)` / `[name] = ...` duck-typed interface.
 
 ## Explicitly out of scope
 
