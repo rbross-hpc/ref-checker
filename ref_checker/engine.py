@@ -12,7 +12,7 @@ from .results import LookupResult, _Stats
 from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration, _retry
 from .sources import arxiv, github, url as url_source
 from .sources.base import FN_BY_KIND as _FN_BY_KIND
-from .sources.base import SourceContext
+from .sources.base import LivenessSource, ScholarlySource, SourceContext
 from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
 
@@ -76,7 +76,7 @@ def lookup_reference(
             return True
         return src_name in sources_to_query
 
-    def _ctx_for(src) -> SourceContext:
+    def _ctx_for(src: ScholarlySource | LivenessSource) -> SourceContext:
         src_name = src.SOURCE_NAME
         ctx = contexts.get(src_name)
         if ctx is None:
@@ -84,7 +84,9 @@ def lookup_reference(
             contexts[src_name] = ctx
         return ctx
 
-    def call(src, queried_by: str, *args) -> tuple[dict | None, float | None]:
+    def call(
+        src: ScholarlySource, queried_by: str, *args
+    ) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
             result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,
@@ -166,7 +168,9 @@ def lookup_reference(
         health.record(src_name, status)
         return summary, sim
 
-    def call_liveness(src, urls: str, queried_by: str) -> tuple[dict | None, float | None]:
+    def call_liveness(
+        src: LivenessSource, urls: str, queried_by: str
+    ) -> tuple[dict | None, float | None]:
         src_name = src.SOURCE_NAME
         if health.is_disabled(src_name):
             result.record_source(src_name, OutcomeKind.DISABLED, queried_by=queried_by,

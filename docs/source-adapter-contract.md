@@ -53,6 +53,10 @@ check, rather than dispatching through the Protocol itself. A `Protocol`
 can't cleanly express "this method is present only if that flag is set,"
 so the three scholarly lookup functions remain plain, optionally-present
 attributes rather than part of the Protocol's required method set.
+`build_context()`, by contrast, *is* part of both Protocols — unlike the
+lookup functions, it's unconditionally required by every source, with no
+capability gating anywhere it's called (`registry.py`,
+`engine.py:_ctx_for()`).
 
 ## Single sources of truth derived from the contract
 
@@ -81,11 +85,20 @@ attributes rather than part of the Protocol's required method set.
 module:
 
 - It satisfies `ScholarlySource` or `LivenessSource` (structural, via
-  `isinstance` against the `runtime_checkable` Protocol).
+  `isinstance` against the `runtime_checkable` Protocol — this only
+  verifies attribute/method *presence*, not signatures; see below).
 - Every kind declared in `SUPPORTED_QUERY_KINDS` has a matching function
   present, and conversely every one of the three optional functions that
   exists has its kind declared — guards drift in either direction.
 - `registry.DEFAULT_DELAYS[name]` matches the module's own `DEFAULT_DELAY`.
+- `TestSourceFunctionSignatures` uses `inspect.signature()` (which
+  `isinstance` against a `runtime_checkable` Protocol cannot do) to verify
+  `build_context()` takes no parameters, and that every lookup/`check_url`
+  function each source module actually implements has a trailing,
+  positional `ctx` parameter annotated `SourceContext` — the one calling
+  convention `engine.py` relies on (`fn(*args, ctx)`,
+  `src.check_url(urls, ctx)`) but that neither the Protocol classes nor a
+  plain `hasattr` check can enforce on their own.
 
 ## Shared `SourceContext`
 

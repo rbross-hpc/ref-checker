@@ -52,24 +52,6 @@ follow-on once there's appetite for that wider a diff; `SourceOutcome`
 itself needs no further change to accommodate it (`summary: Candidate |
 None` is a drop-in type swap).
 
-### Extend source Protocols to cover the full adapter contract
-
-`ScholarlySource`/`LivenessSource` (`sources/base.py`) declare
-`SOURCE_NAME`/`DEFAULT_DELAY`/`SUPPORTED_QUERY_KINDS`, but `build_context()`
-— relied on by `registry.py` and `engine.py:_ctx_for()` for every source —
-isn't part of either Protocol. The structural contract tests
-(`test_source_contract.py`) also only check name/attribute presence
-(`hasattr`, declared-kind-has-matching-function) and a couple of
-scalar-value equalities (`DEFAULT_DELAYS[name] == DEFAULT_DELAY`) — not
-function signatures, return types, or that every lookup function actually
-accepts the mandatory trailing `ctx: SourceContext` parameter the
-docstring in `base.py` claims is required.
-
-Either add `build_context()` (and ideally the lookup/`check_url`
-signatures) to the Protocols, or replace source modules with small adapter
-objects implementing one complete Protocol — worth reconsidering given how
-much behavior the source contract now carries.
-
 ## Matching quality
 
 ### Checked-in matching-quality benchmark corpus

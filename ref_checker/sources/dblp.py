@@ -79,7 +79,7 @@ def _summarize(info: dict) -> dict[str, Any]:
 
 
 def search_by_title(
-    title: str, ctx: SourceContext
+    title: str, ctx: SourceContext,
 ) -> tuple[dict | None, float | None]:
     params: dict[str, Any] = {"q": title, "format": "json", "h": 5}
     last_exc: Exception | None = None
