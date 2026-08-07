@@ -165,9 +165,10 @@ Scope: `openalex.py`, `crossref.py`, `osti.py`, `dblp.py`, `arxiv.py`, and
 - Docs: `docs/source-adapter-contract.md` gained a "Shared SourceContext"
   section; `docs/lookup-engine.md`'s concurrency section notes session
   reuse; `CHANGELOG.md` entry added. Semantic Scholar's "drop key on 403,
-  retry unauthenticated" backlog item is now easier since
-  `ctx.credentials` is a natural place to mutate a session-scoped "key is
-  bad" flag (not implemented yet, just noting the dependency is in place).
+  retry unauthenticated" backlog item used exactly this: `ctx.credentials`
+  is the session-scoped "key is bad" flag, mutated in place on first 403
+  (see `CHANGELOG.md`'s "Fixed" entry for the details — landed later, on
+  branch `fix/dblp-and-s2-source-fixes`).
 
 ### Part 2 — extend to liveness sources (`github.py`, `url.py`) (done)
 

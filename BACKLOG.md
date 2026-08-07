@@ -118,30 +118,3 @@ source + query mode + normalized query + cache age) would let a second
 paper citing the same DOI skip re-querying it. Worth doing once the source
 adapter interface (below, or a future `Protocol`) makes it natural to wrap
 adapter calls in a caching layer.
-
-## Sources
-
-### DBLP `Retry-After` handling on 503
-
-`ref_checker/sources/dblp.py` currently treats 503 as "try the next mirror"
-and moves on. DBLP occasionally returns 503 with a `Retry-After` header when
-it wants us to back off explicitly. We could parse `Retry-After` (via the
-existing `_http.parse_retry_after` helper) and, when present, raise
-`RateLimited(retry_after=...)` so the outer retry loop waits the requested
-amount before hitting the mirror. Low priority: the current mirror-failover
-path already handles the common case.
-
-### Semantic Scholar: drop API key on 403 and retry unauthenticated
-
-When Semantic Scholar returns 403, the current fix (added alongside the
-quota-exhaustion work) surfaces a hint pointing at `SEMANTICSCHOLAR_API_KEY`
-in the error message. Better: on the first 403, emit a WARNING that the key
-appears invalid/revoked/unauthorized, drop the `x-api-key` header for the
-remainder of the session, and retry the current request unauthenticated
-(Semantic Scholar's public tier has stricter rate limits but still works).
-Requires a session-scoped mutable flag in `sources/semanticscholar.py` (or
-threading a `SourceHealth`-like handle through), plus a test that the second
-call omits the header once the flag is tripped. `SourceContext.credentials`
-(added by the SourceContext work) is now a natural home for this scoped
-mutable "key is bad" flag, since it's already built once per run/thread and
-threaded through every call.

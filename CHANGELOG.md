@@ -116,6 +116,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requested backoff instead of falling back to the default schedule.
   Still tries the next mirror first when one mirror 503s; unchanged when
   either mirror responds successfully.
+- **Semantic Scholar 403 with a bad API key no longer aborts the source
+  for the rest of the run**: previously, any 403 (including one caused by
+  an invalid/revoked `SEMANTICSCHOLAR_API_KEY`) raised a generic
+  `HTTPError` with a hint to check the key, and every subsequent call
+  hit the same 403 again for the rest of the run. Now, on the first 403
+  where a key is set in `ctx.credentials`, `get_by_doi`/`get_by_arxiv_id`/
+  `search_by_title` print one `WARNING` to stderr, clear the key in
+  `ctx.credentials` (so `_headers()` omits `x-api-key` on every later
+  call in that thread too — Semantic Scholar's public tier still works,
+  just with stricter rate limits), and retry the current request once
+  unauthenticated. If no key was set (or the retry also 403s), falls
+  through to the existing generic hint error unchanged. Since
+  `SourceContext` is thread-local (see the `ThreadLocalSourceContexts`
+  entry above), each worker thread discovers and drops a bad key
+  independently on its own first 403.
 
 ## [0.2.0] - 2026-08-06
 
