@@ -154,11 +154,17 @@ class LookupResult:
         self.url_liveness_check = False
         self.evidence = None
 
+        has_inconclusive_source = False
         for src, entry in self.per_source.items():
             status = entry.get("status")
             if status in (OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED):
                 if src not in self.exhausted_sources:
                     self.exhausted_sources.append(src)
+            if status in (
+                OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED,
+                OutcomeKind.SKIPPED, OutcomeKind.DISABLED,
+            ):
+                has_inconclusive_source = True
             if status == OutcomeKind.HIT_ID:
                 qby = entry.get("queried_by") or []
                 if "doi" in qby and src not in self.doi_found_in:
@@ -242,7 +248,13 @@ class LookupResult:
             self.evidence = EvidenceLevel.STRONG_METADATA_MATCH
         elif best_score >= min_match:
             self.evidence = EvidenceLevel.WEAK_OR_AMBIGUOUS_MATCH
-        elif self.exhausted_sources or self.dead_urls:
+        elif self.exhausted_sources or self.dead_urls or has_inconclusive_source:
+            # exhausted_sources/dead_urls cover error/rate-limit/dead-URL
+            # cases (and are also surfaced verbatim in CLI output);
+            # has_inconclusive_source additionally catches skipped
+            # (interrupted run) and disabled (circuit breaker) sources,
+            # which are not genuine negative evidence and must not be
+            # reported as a confident NOT_FOUND.
             self.evidence = EvidenceLevel.INCOMPLETE
         else:
             self.evidence = EvidenceLevel.NOT_FOUND

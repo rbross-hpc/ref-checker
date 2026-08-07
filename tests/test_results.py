@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from ref_checker.extract import Reference
+from ref_checker.model import EvidenceLevel
 from ref_checker.results import LookupResult
 
 
@@ -79,3 +80,62 @@ class TestRecomputeBest:
         r.recompute_best(ref, 0.80)
         assert r.best_source is None
         assert r.display_score is None
+
+    def test_all_not_found_is_not_found(self):
+        """A genuine conclusive negative from every source is NOT_FOUND."""
+        ref = _ref()
+        r = LookupResult()
+        r.record_source("openalex", "not_found", queried_by="title")
+        r.record_source("crossref", "not_found", queried_by="title")
+        r.recompute_best(ref, 0.80)
+        assert r.evidence == EvidenceLevel.NOT_FOUND
+
+    def test_all_skipped_is_incomplete_not_not_found(self):
+        """An interrupted run (every source skipped) must not be reported
+        as a confident NOT_FOUND — the checks were never actually made.
+        """
+        ref = _ref()
+        r = LookupResult()
+        r.record_source("openalex", "skipped", queried_by=None, note="aborted by user")
+        r.record_source("crossref", "skipped", queried_by=None, note="aborted by user")
+        r.recompute_best(ref, 0.80)
+        assert r.evidence == EvidenceLevel.INCOMPLETE
+
+    def test_all_disabled_is_incomplete_not_not_found(self):
+        """Sources tripped by the circuit breaker were never conclusively
+        checked either — must not read as NOT_FOUND.
+        """
+        ref = _ref()
+        r = LookupResult()
+        r.record_source("openalex", "disabled", queried_by=None,
+                        note="session circuit breaker")
+        r.record_source("crossref", "disabled", queried_by=None,
+                        note="session circuit breaker")
+        r.recompute_best(ref, 0.80)
+        assert r.evidence == EvidenceLevel.INCOMPLETE
+
+    def test_mixed_not_found_and_skipped_is_incomplete(self):
+        """Even one skipped/disabled source among otherwise-conclusive
+        not_found results means the aggregate is not a genuine negative.
+        """
+        ref = _ref()
+        r = LookupResult()
+        r.record_source("openalex", "not_found", queried_by="title")
+        r.record_source("crossref", "skipped", queried_by=None,
+                        note="aborted by user")
+        r.recompute_best(ref, 0.80)
+        assert r.evidence == EvidenceLevel.INCOMPLETE
+
+    def test_skipped_does_not_affect_exhausted_sources_list(self):
+        """exhausted_sources keeps its existing error/rate_limited-only
+        meaning and display text — skipped/disabled sources must not be
+        added to it, only to the separate INCOMPLETE evidence signal.
+        """
+        ref = _ref()
+        r = LookupResult()
+        r.record_source("openalex", "skipped", queried_by=None,
+                        note="aborted by user")
+        r.record_source("crossref", "error", queried_by="doi")
+        r.recompute_best(ref, 0.80)
+        assert r.exhausted_sources == ["crossref"]
+        assert r.evidence == EvidenceLevel.INCOMPLETE

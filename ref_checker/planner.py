@@ -49,6 +49,12 @@ def _plan_ref_work(
         st = entry.get("status")
         if st == OutcomeKind.DISABLED:
             targets.add(src)
+        elif st == OutcomeKind.SKIPPED:
+            # A skipped source was never actually attempted (e.g. the run
+            # was interrupted before its turn) — always retry regardless of
+            # retry_errored, since there is no "already tried and failed"
+            # signal to respect that flag for.
+            targets.add(src)
         elif st in (OutcomeKind.ERROR, OutcomeKind.RATE_LIMITED) and retry_errored:
             targets.add(src)
     return targets
