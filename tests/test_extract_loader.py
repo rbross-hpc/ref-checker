@@ -76,6 +76,37 @@ class TestDuplicateIndexRejection:
         assert "Warning" in err
 
 
+class TestStricterIndexValues:
+    """int(x) previously accepted floats (truncated), bools (int subclass),
+    and non-positive values silently. These are now rejected the same way
+    a non-numeric string always was: a ReferenceLoadError in strict mode,
+    a skip-and-warn in permissive mode.
+    """
+
+    @pytest.mark.parametrize("bad_index", [1.5, 2.0, True, False, 0, -1, -100])
+    def test_strict_rejects_bad_index(self, bad_index):
+        data = [{"index": bad_index, "title": "A"}]
+        with pytest.raises(ReferenceLoadError):
+            load_references_from_list(data, strict=True)
+
+    @pytest.mark.parametrize("bad_index", [1.5, 2.0, True, False, 0, -1, -100])
+    def test_permissive_skips_bad_index_and_warns(self, bad_index, capsys):
+        data = [
+            {"index": bad_index, "title": "Bad"},
+            {"title": "Good"},
+        ]
+        refs = load_references_from_list(data, strict=False)
+        assert len(refs) == 1
+        assert refs[0].title == "Good"
+        err = capsys.readouterr().err
+        assert "Warning" in err
+
+    def test_positive_int_index_still_accepted(self):
+        data = [{"index": 3, "title": "A"}]
+        refs = load_references_from_list(data)
+        assert refs[0].index == 3
+
+
 class TestShapeValidation:
     def test_non_list_top_level_rejected(self):
         with pytest.raises(ReferenceLoadError):

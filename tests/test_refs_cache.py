@@ -2,7 +2,12 @@
 import json
 from pathlib import Path
 
-from ref_checker.extract import Reference, write_refs_cache, load_refs_cache
+from ref_checker.extract import (
+    Reference,
+    _pdf_sha256,
+    load_refs_cache,
+    write_refs_cache,
+)
 
 
 def _make_refs():
@@ -105,6 +110,26 @@ class TestLoadRefsCache:
         loaded, reason = load_refs_cache(cache, pdf)
         assert loaded is None
         assert reason == "hash_mismatch"
+
+    def test_invalid_index_in_entry_returns_corrupt(self, tmp_path):
+        """A hand-edited/corrupted cache entry with a missing or invalid
+        index (previously silently coerced to 0 and accepted as "valid")
+        is now caught by Reference.from_dict's stricter index validation,
+        which load_refs_cache's existing try/except maps to "corrupt".
+        """
+        pdf = _make_pdf(tmp_path)
+        cache = tmp_path / "paper.refs.json"
+        cache.write_text(json.dumps({
+            "schema_version": 1,
+            "pdf": "paper.pdf",
+            "pdf_sha256": _pdf_sha256(pdf),
+            "extracted_at": "2020-01-01T00:00:00+00:00",
+            "extractor": {},
+            "references": [{"raw": "x", "title": "y"}],  # no "index" key
+        }))
+        loaded, reason = load_refs_cache(cache, pdf)
+        assert loaded is None
+        assert reason == "corrupt"
 
     def test_roundtrip_preserves_fields(self, tmp_path):
         pdf = _make_pdf(tmp_path)

@@ -125,6 +125,19 @@ Please extract all bibliographic references as instructed.
 ---"""
 
 
+def _validate_index(value: object) -> int:
+    """Validate a candidate ``index`` value: must be a native ``int`` (not
+    ``bool`` — a subclass of ``int`` — and not ``float`` or ``str``), and
+    positive (``>= 1``, matching the 1-based contract documented in
+    schema.md). Raises ``ValueError`` on any other input.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"index must be a positive integer, got {value!r}")
+    if value <= 0:
+        raise ValueError(f"index must be a positive integer, got {value!r}")
+    return value
+
+
 @dataclass
 class Reference:
     index: int
@@ -158,6 +171,16 @@ class Reference:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Reference":
+        """Build a ``Reference`` from a dict that already carries a valid,
+        resolved ``index`` (a positive ``int`` — see ``_validate_index``).
+        Callers that accept index-less or untrusted input (the reference
+        loader, LLM extraction, sidecar display) are responsible for
+        resolving a valid index into the dict *before* calling this —
+        e.g. via 1-based list position — since what "missing index" should
+        fall back to differs by caller (a strict parse error for
+        ``check --refs-json``, a permissive positional fallback for LLM
+        output, the sidecar's own outer index key for ``show``).
+        """
         llm_url = d.get("url") or ""
         github_urls = _GITHUB_URL_RE.findall(llm_url)
         cleaned_github = list(dict.fromkeys(u.rstrip(".,;)") for u in github_urls))
@@ -171,8 +194,11 @@ class Reference:
         cleaned_generic = list(dict.fromkeys(generic_urls))
         url = " ".join(cleaned_generic) if cleaned_generic else (d.get("url") or None)
 
+        if "index" not in d:
+            raise ValueError("reference dict is missing required 'index' field")
+
         return cls(
-            index=int(d.get("index", 0)),
+            index=_validate_index(d["index"]),
             raw=d.get("raw", ""),
             title=d.get("title") or None,
             authors=d.get("authors") or [],
@@ -229,7 +255,7 @@ def load_references_from_list(
     for position, entry in enumerate(data, start=1):
         if "index" in entry:
             try:
-                idx = int(entry["index"])
+                idx = _validate_index(entry["index"])
             except (TypeError, ValueError) as exc:
                 if strict:
                     raise ReferenceLoadError(
@@ -374,7 +400,36 @@ def _call_llm(text: str) -> list[Reference]:
     if "references" not in data or not isinstance(data["references"], list):
         raise ValueError(f"LLM response missing 'references' list: {raw_json[:200]}")
 
-    return [Reference.from_dict(r) for r in data["references"]]
+    return [Reference.from_dict(r) for r in _resolve_llm_indices(data["references"])]
+
+
+def _resolve_llm_indices(entries: list[dict]) -> list[dict]:
+    """Resolve a valid, unique 1-based index for every LLM-returned entry.
+
+    LLM output is untrusted: the system prompt asks for a 1-based ``index``
+    per entry, but nothing guarantees the model actually returns one, or
+    that it's valid (positive int, not a duplicate). Unlike
+    ``load_references_from_list`` (which treats a bad explicit index as a
+    hard parse error, subject to *strict*), an LLM index quirk here falls
+    back to the entry's 1-based list position instead of raising — an LLM
+    formatting slip on one field isn't reason to fail the whole extraction
+    (and trigger ``extract_references()``'s retry loop), unlike a
+    structurally invalid response.
+    """
+    resolved: list[dict] = []
+    seen_indices: set[int] = set()
+    for position, entry in enumerate(entries, start=1):
+        idx = position
+        if isinstance(entry, dict) and "index" in entry:
+            try:
+                candidate = _validate_index(entry["index"])
+            except (TypeError, ValueError):
+                candidate = None
+            if candidate is not None and candidate not in seen_indices:
+                idx = candidate
+        seen_indices.add(idx)
+        resolved.append({**entry, "index": idx} if isinstance(entry, dict) else entry)
+    return resolved
 
 
 def extract_references(

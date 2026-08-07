@@ -70,19 +70,6 @@ signatures) to the Protocols, or replace source modules with small adapter
 objects implementing one complete Protocol — worth reconsidering given how
 much behavior the source contract now carries.
 
-### Stricter reference index validation
-
-`extract.py`'s index parsing uses bare `int(...)` conversion (both in
-`Reference.from_dict` and the loader's duplicate-detection path), which
-silently accepts floats (`1.5` → `1`, truncated), booleans (`bool` is an
-`int` subclass, so `True` → `1`), and non-positive values (`0`, negative
-integers) — the only rejection path is a `TypeError`/`ValueError` from
-non-numeric input, or an exact duplicate after conversion. Minor compared
-to the identity-collision bug this loader already fixed (duplicate
-detection is the property that actually matters for that), but easy to
-tighten now: accept only a real positive integer, or optionally a string
-containing only a positive base-10 integer.
-
 ## Matching quality
 
 ### Checked-in matching-quality benchmark corpus
