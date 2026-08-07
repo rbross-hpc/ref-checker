@@ -505,6 +505,148 @@ class TestConcurrency:
 
 
 # --------------------------------------------------------------------------
+# Thread-local SourceContext (fix/threadlocal-source-context)
+# --------------------------------------------------------------------------
+
+
+class TestThreadLocalSourceContexts:
+    """A shared requests.Session used concurrently by multiple worker
+    threads is not safe (session.cookies is read/written on every
+    request/response, unsynchronized at the requests-semantics level).
+    check_references() must give each worker thread its own SourceContext
+    per source, while still reusing that context for every reference
+    dispatched to that thread (the actual point of SourceContext).
+    """
+
+    def test_same_thread_reuses_one_session_across_its_references(
+        self, stub_sources, tmp_path,
+    ):
+        """Within a single worker thread, every reference it processes must
+        see the same session for a given source — this is what preserves
+        the connection-pooling benefit. jobs=1 is the simplest case: the
+        whole run is one thread, so every reference must share one session.
+        """
+        seen_sessions = []
+
+        def _record(doi, ctx):
+            seen_sessions.append(ctx.session)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _record
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 6)]
+        sc = tmp_path / "results.json"
+
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        assert len(seen_sessions) == 5
+        assert len({id(s) for s in seen_sessions}) == 1
+
+    def test_concurrent_run_never_shares_one_session_across_two_threads(
+        self, stub_sources, tmp_path,
+    ):
+        """The core safety property: no two different worker threads may
+        ever be handed the same SourceContext/session for the same source.
+        Each (thread, session) pairing must be internally consistent (one
+        thread -> always the same session) and distinct threads must never
+        report the same session id.
+        """
+        seen: list[tuple[int, int]] = []
+        lock = threading.Lock()
+
+        def _record(doi, ctx):
+            with lock:
+                seen.append((threading.get_ident(), id(ctx.session)))
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _record
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 10)]
+        sc = tmp_path / "results.json"
+
+        runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=3)
+
+        assert len(seen) == 9
+        session_by_thread: dict[int, int] = {}
+        for thread_id, session_id in seen:
+            if thread_id in session_by_thread:
+                assert session_by_thread[thread_id] == session_id, (
+                    "same thread saw two different sessions for one source"
+                )
+            else:
+                session_by_thread[thread_id] = session_id
+
+        thread_ids = set(session_by_thread)
+        session_ids = set(session_by_thread.values())
+        assert len(thread_ids) >= 2, (
+            "test didn't actually exercise more than one worker thread"
+        )
+        assert len(session_ids) == len(thread_ids), (
+            "two different worker threads shared the same session object"
+        )
+
+    def test_sessions_closed_after_normal_completion(self, stub_sources, tmp_path):
+        import unittest.mock
+
+        import requests
+
+        closed_sessions: list[int] = []
+        lock = threading.Lock()
+        orig_close = requests.Session.close
+
+        def _tracked_close(self):
+            with lock:
+                closed_sessions.append(id(self))
+            orig_close(self)
+
+        seen_session_ids = []
+
+        def _record(doi, ctx):
+            seen_session_ids.append(id(ctx.session))
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _record
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sc = tmp_path / "results.json"
+
+        with unittest.mock.patch.object(requests.Session, "close", _tracked_close):
+            runner_mod.check_references(refs, sidecar=sc, pdf_name="p.pdf", jobs=1)
+
+        assert set(seen_session_ids) == set(closed_sessions)
+
+    def test_sessions_closed_after_interrupted_run(self, stub_sources, tmp_path):
+        import requests
+        import unittest.mock
+
+        closed_sessions: list[int] = []
+        lock = threading.Lock()
+
+        def _tracked_close(self):
+            with lock:
+                closed_sessions.append(id(self))
+
+        seen_session_ids = []
+        signalled = {"done": False}
+
+        def _record_then_signal(doi, ctx):
+            seen_session_ids.append(id(ctx.session))
+            if not signalled["done"]:
+                signalled["done"] = True
+                os.kill(os.getpid(), signal.SIGINT)
+            return _summary(doi=doi), 1.0
+
+        stub_sources["openalex"].get_by_doi = _record_then_signal
+        refs = [_ref(index=i, doi=f"10.1/x{i}") for i in range(1, 4)]
+        sc = tmp_path / "results.json"
+
+        with unittest.mock.patch.object(requests.Session, "close", _tracked_close):
+            reason = runner_mod.check_references(
+                refs, sidecar=sc, pdf_name="p.pdf", jobs=1,
+            )
+
+        assert reason == "keyboard_interrupt"
+        assert set(seen_session_ids) == set(closed_sessions)
+
+
+# --------------------------------------------------------------------------
 # Bounded submission window (fix/bounded-submission)
 # --------------------------------------------------------------------------
 

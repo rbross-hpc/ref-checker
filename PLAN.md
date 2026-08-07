@@ -199,6 +199,53 @@ liveness sources, giving them connection pooling for the first time
   `url.check_url()` directly, plus a full `ref-checker check` run against
   a GitHub-URL reference.
 
+### Part 3 — thread-local contexts, fixing shared-session concurrency (done)
+
+Addresses issue #2 from the 2026-08-06 reassessment
+(`../20260806-ref-checker-assessment-2.md`): Parts 1 and 2 built one
+`SourceContext` per source, shared verbatim across every worker thread in
+`check_references()`'s `ThreadPoolExecutor`. `requests.Session` is not
+documented as safe for concurrent use — every request reads
+`session.cookies` and every response writes `Set-Cookie` back into it,
+unsynchronized across threads. Confirmed live (curling the actual target
+APIs) that OSTI and `github.com` both set cookies today, so two worker
+threads processing different references really could race on the same
+session's cookie jar.
+
+Landed:
+
+- `sources/registry.py:ThreadLocalSourceContexts` — a `threading.local()`
+  -backed registry. `.get(name)` lazily builds a context for that source
+  the first time the *calling thread* asks, then returns the same object
+  on every later call from that thread — reuse is now per-thread, not
+  global. Tracks every context built by any thread (under a lock) so
+  `.close_all()` can close every session deterministically at end of run.
+  Satisfies the same `.get(name)` / `[name] = ...` duck-typed interface
+  `engine.py:_ctx_for()` already used, so `engine.py` needed no logic
+  change.
+- `runner.py:check_references()` builds one `ThreadLocalSourceContexts`
+  per run (replacing the flat dict from `build_all_contexts()`) and calls
+  `contexts.close_all()` in the `finally:` block, after the
+  `ThreadPoolExecutor`'s `with` block has fully joined every worker thread
+  — safe on both normal completion and interruption.
+  `sources/registry.py:build_all_contexts()` is kept as-is for direct-call
+  test paths and `cli/main.py:run_lookup()`'s single-context-per-invocation
+  case, where there's no concurrent thread sharing to worry about.
+- New tests: `tests/test_registry.py` (unit tests for
+  `ThreadLocalSourceContexts` directly — same-thread reuse, cross-thread
+  isolation via real `threading.Thread`s, `close_all()` closes every
+  session across threads) and `tests/test_runner.py`'s new
+  `TestThreadLocalSourceContexts` class (end-to-end: same-thread reuse
+  under `jobs=1`, cross-thread isolation under `jobs=3` — asserting no two
+  distinct worker threads ever report the same session id — and
+  deterministic session closure on both normal completion and an
+  interrupted run).
+- Docs: `docs/lookup-engine.md` gained a "Threading model for
+  SourceContext" subsection explaining the cookie-jar race and the
+  per-thread fix; `docs/source-adapter-contract.md`'s "Shared
+  SourceContext" section updated to describe both context flavors;
+  `CHANGELOG.md` entry added.
+
 ## Testing
 
 ```bash

@@ -116,14 +116,52 @@ line is shown, indicating the DOI may resolve to a differently-titled paper
   repeat all source queries. The refs cache and results sidecar mitigate
   this for iterative work on the *same* paper, but there is no cross-paper
   API response cache (see `BACKLOG.md`).
-- Similarly, `check_references()` calls `sources/registry.py:build_all_contexts()`
-  once per run to build a `SourceContext` (session + credentials; see
-  [source-adapter-contract.md](source-adapter-contract.md)) per source
-  (scholarly and liveness alike), then threads that same dict through
-  `lookup_reference()` for every reference — so every reference in the run
-  reuses the same `requests.Session` (and its connection pool) per source,
-  instead of each HTTP call opening a fresh connection. Like the rate
-  limiter, this does not persist across separate CLI invocations.
+- Similarly, `check_references()` builds a
+  `sources/registry.py:ThreadLocalSourceContexts` once per run and threads
+  it through `lookup_reference()` for every reference, so HTTP connections
+  are pooled per source instead of each call opening a fresh one. See
+  "Threading model for `SourceContext`" below for why this is
+  thread-local rather than one flat dict shared across every worker
+  thread. Like the rate limiter, pooled connections do not persist across
+  separate CLI invocations.
+
+### Threading model for `SourceContext`
+
+`SourceContext` (session + credentials; see
+[source-adapter-contract.md](source-adapter-contract.md)) is built **once
+per source per worker thread**, not once per source for the whole run.
+`sources/registry.py:ThreadLocalSourceContexts` is a `threading.local()`
+-backed registry: calling `.get(name)` lazily builds a context for that
+source the first time the *calling thread* asks for it, then returns the
+same object on every subsequent call from that same thread — so every
+reference dispatched to a given worker thread still reuses one session per
+source (the actual point of `SourceContext`), it just no longer shares
+that session with any *other* thread.
+
+This exists because `requests.Session` is not documented as safe for
+concurrent use: every request reads `session.cookies` to build the
+outgoing `Cookie` header, and every response writes any `Set-Cookie` back
+into it, unsynchronized at the `requests`-semantics level
+(`requests.sessions.Session.send`). Two worker threads processing
+different references and sharing one flat `SourceContext`/session (the
+original design) could race on that cookie jar for any source whose
+responses ever carry `Set-Cookie` — confirmed live for OSTI and
+`github.com`, and plausible for the generic `url` liveness source, which
+follows arbitrary user-supplied URLs. `ThreadLocalSourceContexts` closes
+this by construction: `engine.py:_ctx_for()` is unaware of the
+distinction — it just calls `.get(name)` on whatever `contexts` object it
+was handed (a plain `dict` for direct-call test paths and
+`cli/main.py:run_lookup()`'s single-context-per-invocation case, or a
+`ThreadLocalSourceContexts` from `check_references()`), both of which
+satisfy the same duck-typed `.get(name)` / `[name] = ...` interface.
+
+Every session built by any thread during a run is tracked (under a lock)
+so `check_references()` can close all of them deterministically —
+`contexts.close_all()` runs in the `finally:` block after the
+`ThreadPoolExecutor`'s `with` block has fully joined every worker thread
+(`__exit__` calls `shutdown(wait=True)`), so no thread is still using a
+session concurrently with the close. This runs on both normal completion
+and interruption (Ctrl-C).
 
 ## Smart rerun (`planner.py`)
 

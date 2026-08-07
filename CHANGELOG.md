@@ -54,6 +54,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`SourceContext` (and its `requests.Session`) was shared unsynchronized
+  across worker threads**: `check_references()` previously built one
+  `SourceContext` per source and passed the identical object to every
+  `ThreadPoolExecutor` worker, so multiple threads processing different
+  references could call the same source's session concurrently.
+  `requests.Session` is not documented as thread-safe — every request
+  reads `session.cookies` and every response writes `Set-Cookie` back into
+  it, unsynchronized across threads; confirmed live that OSTI and
+  `github.com` both set cookies today, so this was a real (not merely
+  theoretical) cross-reference cookie-jar race for at least those two
+  sources. Fixed via `sources.registry.ThreadLocalSourceContexts`, a
+  `threading.local()`-backed registry giving each worker thread its own
+  `SourceContext` per source while still reusing that thread's session
+  across every reference it processes. Every session built by any thread
+  is closed deterministically in `check_references()`'s `finally:` block,
+  after the thread pool has fully joined, on both normal completion and
+  interruption. See `docs/lookup-engine.md`'s "Threading model for
+  SourceContext" section.
 - **Interrupted runs could be mistaken for completed negative results**:
   `_plan_ref_work` (the resume/smart-rerun planner) now retries sources
   left in `skipped` status by a previous interrupted run (Ctrl-C), not just

@@ -24,7 +24,7 @@ from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration
 from . import sidecar as _sidecar
 from .sources.registry import ALL_SOURCE_NAMES as _ALL_SOURCE_NAMES
 from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
-from .sources.registry import build_all_contexts as _build_all_contexts
+from .sources.registry import ThreadLocalSourceContexts as _ThreadLocalSourceContexts
 
 _SS_UNAUTH_DELAY = 12.0
 
@@ -75,11 +75,15 @@ def check_references(
         if 0.0 < current < _SS_UNAUTH_DELAY:
             effective_delays["semanticscholar"] = _SS_UNAUTH_DELAY
     rl = _RateLimiter(effective_delays, shutdown=shutdown)
-    # Built once for the whole run so every reference reuses the same
-    # session (and credentials) per scholarly source — see PLAN.md's
-    # "Planned work: shared SourceContext" for why this is per-run rather
-    # than per-reference or per-call.
-    contexts = _build_all_contexts()
+    # One SourceContext per source *per worker thread* for the whole run —
+    # see ThreadLocalSourceContexts' docstring for why a single shared
+    # SourceContext (and its requests.Session) is not safe to use
+    # concurrently across worker threads. Every reference dispatched to a
+    # given thread still reuses that thread's session per source, which is
+    # what actually gets the connection-pooling benefit. All sessions built
+    # across every thread during this run are closed in the finally: block
+    # below, whether the run completes normally or is interrupted.
+    contexts = _ThreadLocalSourceContexts()
 
     all_results: dict[int, LookupResult] = {}
     prior_entries: dict[int, dict] = {}
@@ -324,6 +328,13 @@ def check_references(
                 pass
         # Final sidecar flush (belt-and-suspenders).
         _write_sidecar()
+        # Deterministically close every session built by any worker thread
+        # during this run (normal completion or interruption alike). Safe
+        # here: the ThreadPoolExecutor's `with` block above has already
+        # joined every worker thread by the time control reaches this
+        # finally (context manager __exit__ waits for completion), so no
+        # thread is still using a session concurrently with this close.
+        contexts.close_all()
 
         # Emit phase: print every ref in index order, once. Swallow
         # BrokenPipeError so downstream pipes (`| tee`, `| head`) closing

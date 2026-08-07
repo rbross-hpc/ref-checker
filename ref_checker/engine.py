@@ -16,6 +16,16 @@ from .sources.base import SourceContext
 from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
 
+# What _ctx_for() needs from *contexts*: a mapping-like object supporting
+# .get(name) -> SourceContext | None and item assignment. A plain
+# dict[str, SourceContext] satisfies this (used by direct-call test paths
+# and cli/main.py:run_lookup()); runner.py passes a
+# sources.registry.ThreadLocalSourceContexts instead, which satisfies the
+# same duck-typed interface but keys contexts per-thread rather than
+# globally — see that class's docstring for why a flat dict is unsafe to
+# share across concurrent worker threads.
+_ContextsLike = dict
+
 
 def lookup_reference(
     ref: Reference,
@@ -27,19 +37,22 @@ def lookup_reference(
     shutdown: _Shutdown | None = None,
     sources_to_query: set[str] | None = None,
     prior_result: LookupResult | None = None,
-    contexts: dict[str, SourceContext] | None = None,
+    contexts: "_ContextsLike | None" = None,
 ) -> LookupResult:
-    """Run multi-source lookup for a single reference.
+    """Run multi-reference lookup for a single reference.
 
     When *prior_result* is supplied its per_source entries seed the returned
     result; only sources named in *sources_to_query* are actually queried,
     and everything else is preserved from prior_result.
 
-    *contexts* maps source name -> SourceContext (session + credentials),
-    built once per ``check_references()`` run by ``runner.py`` and
-    threaded down here so every reference in the run reuses the same
-    session per source. When None (e.g. some direct-call test paths), a
-    fresh context is built lazily per source on first use.
+    *contexts* maps source name -> SourceContext (session + credentials).
+    ``runner.py`` builds one such registry per ``check_references()`` run
+    (a ``sources.registry.ThreadLocalSourceContexts``, not a plain dict —
+    see its docstring) and threads it down here so every reference in the
+    run reuses the same session per source *within the worker thread
+    processing that reference*. When None (e.g. some direct-call test
+    paths), a fresh context is built lazily per source on first use, with
+    no reuse across separate ``lookup_reference()`` calls.
     """
     rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _DEFAULT_DELAYS)
     health = health if health is not None else SourceHealth(stats=stats)
