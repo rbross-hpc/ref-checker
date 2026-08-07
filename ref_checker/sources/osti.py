@@ -123,7 +123,7 @@ def get_by_doi(doi: str, ctx: SourceContext) -> tuple[dict | None, float | None]
 
 
 def search_by_title(
-    title: str, ctx: SourceContext
+    title: str, ctx: SourceContext,
 ) -> tuple[dict | None, float | None]:
     resp = ctx.session.get(_BASE, params={"title": title}, timeout=30)
     if resp.status_code == 200:

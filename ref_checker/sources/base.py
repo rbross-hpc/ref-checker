@@ -24,12 +24,24 @@ Every scholarly source module must declare:
   is title-only), so this is plain metadata rather than a method the
   Protocol itself requires — a ``Protocol`` can't cleanly express
   "optionally present."
+- ``build_context() -> SourceContext``: unlike the three lookup functions
+  above, this *is* unconditionally required by every source (scholarly or
+  liveness) — ``registry.py`` and ``engine.py:_ctx_for()`` call it for
+  every registered source with no capability gating — so it's part of
+  both Protocols below.
 
-Liveness sources (``github``, ``url``) implement ``check_url`` instead and
-have no ``SUPPORTED_QUERY_KINDS``.
+Liveness sources (``github``, ``url``) implement ``check_url`` instead of
+the three scholarly lookup functions, and have no ``SUPPORTED_QUERY_KINDS``.
 
 Every source function (scholarly and liveness alike) also takes a mandatory
 trailing ``ctx: SourceContext`` parameter — see that class's docstring.
+``@runtime_checkable`` only lets ``isinstance()`` verify that a module has
+an attribute/method of the right *name* — it cannot check parameter names,
+order, or types (a fundamental limitation of ``Protocol``, not specific to
+this codebase). ``tests/test_source_contract.py`` additionally uses
+``inspect.signature()`` to verify the trailing-``ctx`` convention actually
+holds for every function each source module implements, since neither this
+Protocol nor ``isinstance`` can express that on their own.
 """
 from __future__ import annotations
 
@@ -71,11 +83,15 @@ class ScholarlySource(Protocol):
     DEFAULT_DELAY: float
     SUPPORTED_QUERY_KINDS: frozenset[QueryKind]
 
+    def build_context(self) -> "SourceContext": ...
+
 
 @runtime_checkable
 class LivenessSource(Protocol):
     SOURCE_NAME: str
     DEFAULT_DELAY: float
+
+    def build_context(self) -> "SourceContext": ...
 
     def check_url(
         self, urls: str, ctx: "SourceContext"

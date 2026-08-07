@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`ScholarlySource`/`LivenessSource` Protocols (`sources/base.py`) now
+  include `build_context()`**, which every source module already
+  implemented and which `registry.py`/`engine.py:_ctx_for()` already
+  called unconditionally for every source — it just wasn't part of either
+  Protocol before. The three scholarly lookup functions
+  (`get_by_doi`/`get_by_arxiv_id`/`search_by_title`) remain deliberately
+  outside `ScholarlySource` (a `Protocol` can't express "required only if
+  `SUPPORTED_QUERY_KINDS` says so" — DBLP is title-only, CrossRef/OSTI
+  have no arXiv lookup). `engine.py`'s previously-untyped `src` parameters
+  (`_ctx_for`, `call`, `call_liveness`) are now annotated
+  `ScholarlySource | LivenessSource` (documentation value only — no
+  static type checker runs in CI, see `docs/source-adapter-contract.md`).
+  Cosmetic: `osti.py`/`dblp.py`'s `search_by_title` signatures now have
+  the same trailing comma as the other 4 scholarly sources.
+- **`test_source_contract.py` gained real signature checks**: a
+  `runtime_checkable` `Protocol`'s `isinstance()` check only verifies that
+  an attribute/method of the right *name* exists, never its signature —
+  so nothing previously caught a source module whose lookup/`check_url`
+  function didn't actually accept a trailing, positional
+  `ctx: SourceContext` parameter, or whose `build_context()` took
+  unexpected arguments. New `TestSourceFunctionSignatures` class uses
+  `inspect.signature()` against every function each source module
+  actually implements (driven by `SUPPORTED_QUERY_KINDS`/`FN_BY_KIND` for
+  scholarly sources) to check this directly. 16 new tests; behavior
+  unchanged (no production dispatch logic touched).
+
 ### Fixed
 
 - **`Reference` index parsing silently accepted invalid values**:
