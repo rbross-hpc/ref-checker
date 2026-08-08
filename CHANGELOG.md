@@ -61,6 +61,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   other), not authorship. Not implemented; `BACKLOG.md`'s item rewritten
   to record this finding and note an untried, narrower alternative
   (numbered/parted/versioned title-suffix detection) instead.
+- **Abbreviation/alias handling for bare project names**: the backlog item
+  assumed the benchmark's real `abbrev-scikit-bare-acronym` false-reject
+  (`"scikit-learn"` vs. its full paper title, score ~0.47) would need an
+  alias/abbreviation table. Investigation found that overstated for the
+  one real case that motivates it — it's a literal word-prefix relation,
+  not an unrelated alias — but a general "containment implies same paper"
+  fix carries the same false-confirm risk found in the author/venue
+  investigation above: tested against the full benchmark, it flips
+  `sameauthor-echam-ham-parts` (0.684 → 0.909) and
+  `sameauthor-zfp-version-vs-faq` (0.829 → 1.0) into false confirms, since
+  same-author/parted-series titles are frequently near-supersets of each
+  other. A narrower fix — gate to titles where the shorter side is ≤ 3
+  normalized words (name/acronym-like) and an exact ordered word-prefix of
+  the longer side — was validated as safe: only `abbrev-scikit-bare-acronym`
+  changes classification in the benchmark, and cross-checking against all
+  198 real titles across `tests/fixtures/refs/*.json` found no accidental
+  prefix collisions beyond the real scikit-learn pair. Not implemented;
+  the benchmark's other 3 `KNOWN FALSE REJECT` cases are subtitle-drop
+  cases (shorter side 7-8 words), a distinct, harder gap this narrower fix
+  would not address. `BACKLOG.md`'s item rewritten to record the finding
+  and the validated-but-unshipped narrower fix.
 
 ### Fixed
 

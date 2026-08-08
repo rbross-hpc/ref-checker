@@ -38,9 +38,19 @@ checked-in baseline with justification).
 
 - **No alias/abbreviation table.** A bare acronym or project name (e.g.
   `"scikit-learn"`) scores far below `min_match` against that project's full
-  paper title, even though it identifies the same work — similarity scoring
-  alone can't bridge this; see the benchmark's `abbreviated` category (cases
-  tagged `KNOWN FALSE REJECT`).
+  paper title, even though it identifies the same work — plain similarity
+  scoring alone can't bridge this; see the benchmark's `abbreviated` category
+  (cases tagged `KNOWN FALSE REJECT`). Investigated: this specific case
+  doesn't actually need an alias table — the real bare-name titles found in
+  the fixtures are always a literal word-prefix of their full title, not an
+  unrelated alias — but a general "containment implies same paper" fix was
+  found **not viable**: it flips two `same_author_similar` cases (parted
+  series, near-superset titles by construction) into false confirms. A
+  narrower fix gated to very short (≤ 3 word), name-like titles was
+  validated as safe against the full benchmark and all real fixture titles,
+  but not implemented. The benchmark's other `KNOWN FALSE REJECT` cases
+  (subtitle-drop, not bare-name) are a distinct, harder gap this narrower
+  fix would not address. See `BACKLOG.md` for the full finding.
 - **No author/venue scoring** (see "Authors are not part of the similarity
   score" above). This is the source of the benchmark's `same_author_similar`
   and `generic_titles` categories landing in "ambiguous" rather than a clean
