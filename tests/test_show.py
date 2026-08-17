@@ -6,6 +6,7 @@ import json
 
 from ref_checker import runner as runner_mod
 from ref_checker import sidecar as sidecar_mod
+from ref_checker.sources.registry import default_delays as _real_default_delays
 from ref_checker.cli import show as show_mod
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
@@ -264,8 +265,8 @@ class TestEndOfRunHint:
             url as url_source,
         )
         monkeypatch.setattr(
-            runner_mod, "_DEFAULT_DELAYS",
-            {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
+            runner_mod, "_default_delays",
+            lambda: {k: 0.0 for k in _real_default_delays()},
         )
         for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
             for name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
@@ -288,8 +289,8 @@ class TestEndOfRunHint:
             url as url_source,
         )
         monkeypatch.setattr(
-            runner_mod, "_DEFAULT_DELAYS",
-            {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
+            runner_mod, "_default_delays",
+            lambda: {k: 0.0 for k in _real_default_delays()},
         )
         for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
             for name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):

@@ -13,8 +13,8 @@ from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration, _r
 from .sources import arxiv, github, url as url_source
 from .sources.base import FN_BY_KIND as _FN_BY_KIND
 from .sources.base import LivenessSource, ScholarlySource, SourceContext
-from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
-from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
+from .sources.registry import default_delays as _default_delays
+from .sources.registry import scholarly_sources as _scholarly_sources
 
 # What _ctx_for() needs from *contexts*: a mapping-like object supporting
 # .get(name) -> SourceContext | None and item assignment. A plain
@@ -54,7 +54,7 @@ def lookup_reference(
     paths), a fresh context is built lazily per source on first use, with
     no reuse across separate ``lookup_reference()`` calls.
     """
-    rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _DEFAULT_DELAYS)
+    rl = rate_limiter if rate_limiter is not None else _RateLimiter(delays or _default_delays())
     health = health if health is not None else SourceHealth(stats=stats)
     contexts = contexts if contexts is not None else {}
 
@@ -281,7 +281,7 @@ def lookup_reference(
         and (ref.url or ref.github_url)
     )
 
-    scholarly_iter = _SCHOLARLY_SOURCES if not url_only else []
+    scholarly_iter = _scholarly_sources() if not url_only else []
 
     for src in scholarly_iter:
         if _id_confirmed():

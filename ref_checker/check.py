@@ -10,8 +10,7 @@ split into focused modules:
 - ``runtime.py`` — ``_Shutdown``, ``SourceHealth``, ``_RateLimiter``,
   ``_retry``: shared runtime primitives.
 - ``planner.py`` — ``_plan_ref_work``: smart-rerun source selection.
-- ``sources/registry.py`` — static source-module lists and derived
-  name lists.
+- ``sources/registry.py`` — source-module registry functions.
 
 This module re-exports every name that used to live here so existing
 callers (``cli/main.py``) and the test suite's extensive ``check.<name>``
@@ -30,22 +29,15 @@ from .runtime import (
     _format_duration,
     _retry,
 )
-from .sources.registry import ALL_SOURCE_NAMES as _ALL_SOURCE_NAMES
-from .sources.registry import SCHOLARLY_SOURCES as _SCHOLARLY_SOURCES
-from .sources.registry import SCHOLARLY_SOURCE_NAMES as _SCHOLARLY_SOURCE_NAMES
-
 __all__ = [
     "SourceHealth",
     "check_references",
     "lookup_reference",
     # Re-exported for backward compatibility: existing callers/tests reach
     # into these as check.<name> even though they now live in engine.py,
-    # runner.py, runtime.py, planner.py, or sources/registry.py.
-    "_ALL_SOURCE_NAMES",
+    # runner.py, runtime.py, or planner.py.
     "_QUOTA_EXHAUSTED_THRESHOLD",
     "_RateLimiter",
-    "_SCHOLARLY_SOURCE_NAMES",
-    "_SCHOLARLY_SOURCES",
     "_Shutdown",
     "_format_duration",
     "_plan_ref_work",

@@ -7,13 +7,13 @@ from __future__ import annotations
 
 from ref_checker import planner as planner_mod
 from ref_checker.results import LookupResult
-from ref_checker.sources.registry import ALL_SOURCE_NAMES
+from ref_checker.sources.registry import all_source_names
 
 
 class TestPlanRefWork:
     def test_fresh_ref_queries_all_sources(self):
         targets = planner_mod._plan_ref_work(None, None, retry_closest=False, retry_errored=True)
-        assert targets == set(ALL_SOURCE_NAMES)
+        assert targets == set(all_source_names())
 
     def test_ok_ref_returns_none(self):
         r = LookupResult(id_confirmed=True, display_score=0.99, best_source="openalex")

@@ -17,7 +17,8 @@ from ref_checker import runtime as runtime_mod
 from ref_checker import sidecar as sidecar_mod
 from ref_checker.extract import Reference
 from ref_checker.results import LookupResult
-from ref_checker.sources.registry import SCHOLARLY_SOURCE_NAMES, ALL_SOURCE_NAMES
+from ref_checker.sources.registry import scholarly_source_names, all_source_names
+from ref_checker.sources.registry import default_delays as _real_default_delays
 
 
 def _ref(index=1, title="A Paper", year=2020, doi=None, arxiv_id=None,
@@ -50,29 +51,14 @@ def _summary(title="A Paper", year=2020, doi="10.1/x"):
 
 @pytest.fixture(autouse=True)
 def _no_delays(monkeypatch):
-    """Zero out per-source delays so tests don't sleep.
-
-    Also clears PRIMO_* env vars so that loading .env doesn't accidentally
-    enable Primo and cause these runner tests to make real network calls.
-    """
+    """Zero out per-source delays so tests don't sleep."""
     monkeypatch.setattr(
-        runner_mod, "_DEFAULT_DELAYS",
-        {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
+        runner_mod, "_default_delays",
+        lambda: {k: 0.0 for k in _real_default_delays()},
     )
     monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
     for var in ("PRIMO_BASE_URL", "PRIMO_VID", "PRIMO_INST", "PRIMO_SCOPE"):
         monkeypatch.delenv(var, raising=False)
-    from ref_checker.sources import registry as registry_mod
-    from ref_checker import engine as engine_mod2
-    import tests.test_runner as _self
-    non_primo = [s for s in registry_mod.SCHOLARLY_SOURCES if s.SOURCE_NAME != "primo"]
-    non_primo_names = [s.SOURCE_NAME for s in non_primo]
-    all_non_primo_names = [n for n in registry_mod.ALL_SOURCE_NAMES if n != "primo"]
-    monkeypatch.setattr(registry_mod, "SCHOLARLY_SOURCES", non_primo)
-    monkeypatch.setattr(engine_mod2, "_SCHOLARLY_SOURCES", non_primo)
-    monkeypatch.setattr(runtime_mod, "SCHOLARLY_SOURCE_NAMES", non_primo_names)
-    monkeypatch.setattr(_self, "SCHOLARLY_SOURCE_NAMES", non_primo_names)
-    monkeypatch.setattr(_self, "ALL_SOURCE_NAMES", all_non_primo_names)
 
 
 @pytest.fixture
@@ -82,7 +68,7 @@ def stub_sources(monkeypatch):
     Tests can override individual functions to inject behavior.
     """
     from ref_checker.sources import (
-        arxiv, crossref, dblp, github, openalex, osti, primo, semanticscholar,
+        arxiv, crossref, dblp, github, openalex, osti, semanticscholar,
         url as url_source,
     )
     for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
@@ -92,7 +78,6 @@ def stub_sources(monkeypatch):
     monkeypatch.setattr(github, "check_url", lambda *a, **kw: (None, None, []))
     monkeypatch.setattr(url_source, "check_url", lambda *a, **kw: (None, None, []))
     return {
-        "primo": primo,
         "openalex": openalex,
         "crossref": crossref,
         "osti": osti,
@@ -180,7 +165,7 @@ class TestCheckReferences:
         def _boom(*a, **kw):
             raise RuntimeError("service down")
 
-        for name in SCHOLARLY_SOURCE_NAMES:
+        for name in scholarly_source_names():
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -209,7 +194,7 @@ class TestCheckReferences:
         prior_result.record_source("crossref", "not_found", queried_by="title")
         sidecar_mod.write(sidecar_path, "test.pdf", refs, {1: prior_result}, 0.80)
 
-        calls = {name: 0 for name in ALL_SOURCE_NAMES}
+        calls = {name: 0 for name in all_source_names()}
 
         def track(name, orig):
             def _wrapped(*a, **kw):
@@ -289,7 +274,7 @@ class TestCheckReferences:
 
         # --- Resume: crossref (skipped) must be re-queried this time. ---
         monkeypatch.setattr(runtime_mod._RateLimiter, "wait", orig_wait)
-        calls = {name: 0 for name in ALL_SOURCE_NAMES}
+        calls = {name: 0 for name in all_source_names()}
 
         def track(name, orig):
             def _wrapped(*a, **kw):
@@ -449,7 +434,7 @@ class TestConcurrency:
                 errors_seen.append(1)
             raise RuntimeError("service down")
 
-        for name in SCHOLARLY_SOURCE_NAMES:
+        for name in scholarly_source_names():
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -820,7 +805,7 @@ class TestBoundedSubmission:
                 raise RateLimited(retry_after=0.0)
             raise RuntimeError("real 500")
 
-        for name in SCHOLARLY_SOURCE_NAMES:
+        for name in scholarly_source_names():
             src = stub_sources[name]
             for fn_name in ("get_by_doi", "get_by_arxiv_id", "search_by_title"):
                 if hasattr(src, fn_name):
@@ -1206,8 +1191,8 @@ class TestSSUnauthDelay:
         monkeypatch.delenv("SEMANTICSCHOLAR_API_KEY", raising=False)
         # Restore a realistic (non-zero) default so the override kicks in.
         monkeypatch.setattr(
-            runner_mod, "_DEFAULT_DELAYS",
-            {**{k: 0.0 for k in runner_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+            runner_mod, "_default_delays",
+            lambda: {**{k: 0.0 for k in _real_default_delays()}, "semanticscholar": 8.0},
         )
         captured: dict = {}
         real_init = runtime_mod._RateLimiter.__init__
@@ -1232,8 +1217,8 @@ class TestSSUnauthDelay:
     ):
         monkeypatch.setenv("SEMANTICSCHOLAR_API_KEY", "sk-test")
         monkeypatch.setattr(
-            runner_mod, "_DEFAULT_DELAYS",
-            {**{k: 0.0 for k in runner_mod._DEFAULT_DELAYS}, "semanticscholar": 8.0},
+            runner_mod, "_default_delays",
+            lambda: {**{k: 0.0 for k in _real_default_delays()}, "semanticscholar": 8.0},
         )
         captured: dict = {}
         real_init = runtime_mod._RateLimiter.__init__

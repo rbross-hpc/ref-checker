@@ -22,8 +22,8 @@ from .planner import _plan_ref_work
 from .results import LookupResult, _Stats
 from .runtime import SourceHealth, _RateLimiter, _Shutdown, _format_duration
 from . import sidecar as _sidecar
-from .sources.registry import ALL_SOURCE_NAMES as _ALL_SOURCE_NAMES
-from .sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
+from .sources.registry import all_source_names as _all_source_names
+from .sources.registry import default_delays as _default_delays
 from .sources.registry import ThreadLocalSourceContexts as _ThreadLocalSourceContexts
 
 _SS_UNAUTH_DELAY = 12.0
@@ -65,7 +65,7 @@ def check_references(
     stats = _Stats()
     shutdown = _Shutdown()
     health = SourceHealth(threshold=source_error_threshold, stats=stats)
-    effective_delays = dict(delays or _DEFAULT_DELAYS)
+    effective_delays = dict(delays or _default_delays())
     # SS unauth tier is severely rate-limited. If no API key is configured,
     # spread requests further apart to reduce 429 pressure. Preserve
     # explicitly-zeroed delays (test fixtures) — only override when the
@@ -116,7 +116,7 @@ def check_references(
         prior_status = prior_result_dict.get("status") if prior_result_dict else None
 
         if retry_all:
-            plan: set[str] | None = set(_ALL_SOURCE_NAMES)
+            plan: set[str] | None = set(_all_source_names())
         else:
             plan = _plan_ref_work(
                 prior_result, prior_status,

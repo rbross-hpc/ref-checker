@@ -14,7 +14,7 @@ from .. import check, extract, pdf  # noqa: E402
 from ..model import QueryKind  # noqa: E402
 from ..sources import arxiv, crossref, dblp, openalex, osti, primo, semanticscholar  # noqa: E402
 from ..sources.base import FN_BY_KIND as _FN_BY_KIND  # noqa: E402
-from ..sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS  # noqa: E402
+from ..sources.registry import default_delays as _default_delays  # noqa: E402
 from . import show as show_mod  # noqa: E402
 from . import skill as skill_mod  # noqa: E402
 
@@ -50,25 +50,26 @@ def _build_check_parser(sub) -> None:
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
     p.add_argument("--min-match", type=float, default=0.80, metavar="F",
                    help="Minimum similarity to report as CLOSEST (default: 0.80)")
+    delays = _default_delays()
     if primo.is_enabled():
-        p.add_argument("--delay-primo", type=float, default=_DEFAULT_DELAYS.get("primo", primo.DEFAULT_DELAY), metavar="S",
+        p.add_argument("--delay-primo", type=float, default=delays["primo"], metavar="S",
                        help=f"Seconds between Primo calls (default: {primo.DEFAULT_DELAY})")
-    p.add_argument("--delay-openalex", type=float, default=_DEFAULT_DELAYS["openalex"], metavar="S",
-                   help=f"Seconds between OpenAlex calls (default: {_DEFAULT_DELAYS['openalex']})")
-    p.add_argument("--delay-crossref", type=float, default=_DEFAULT_DELAYS["crossref"], metavar="S",
-                   help=f"Seconds between CrossRef calls (default: {_DEFAULT_DELAYS['crossref']})")
-    p.add_argument("--delay-osti", type=float, default=_DEFAULT_DELAYS["osti"], metavar="S",
-                   help=f"Seconds between OSTI calls (default: {_DEFAULT_DELAYS['osti']})")
-    p.add_argument("--delay-dblp", type=float, default=_DEFAULT_DELAYS["dblp"], metavar="S",
-                   help=f"Seconds between DBLP calls (default: {_DEFAULT_DELAYS['dblp']})")
-    p.add_argument("--delay-semanticscholar", type=float, default=_DEFAULT_DELAYS["semanticscholar"], metavar="S",
-                   help=f"Seconds between Semantic Scholar calls (default: {_DEFAULT_DELAYS['semanticscholar']})")
-    p.add_argument("--delay-arxiv", type=float, default=_DEFAULT_DELAYS["arxiv"], metavar="S",
-                   help=f"Seconds between arXiv calls (default: {_DEFAULT_DELAYS['arxiv']})")
-    p.add_argument("--delay-github", type=float, default=_DEFAULT_DELAYS["github"], metavar="S",
-                   help=f"Seconds between GitHub liveness checks (default: {_DEFAULT_DELAYS['github']})")
-    p.add_argument("--delay-url", type=float, default=_DEFAULT_DELAYS["url"], metavar="S",
-                   help=f"Seconds between generic URL liveness checks (default: {_DEFAULT_DELAYS['url']})")
+    p.add_argument("--delay-openalex", type=float, default=delays["openalex"], metavar="S",
+                   help=f"Seconds between OpenAlex calls (default: {delays['openalex']})")
+    p.add_argument("--delay-crossref", type=float, default=delays["crossref"], metavar="S",
+                   help=f"Seconds between CrossRef calls (default: {delays['crossref']})")
+    p.add_argument("--delay-osti", type=float, default=delays["osti"], metavar="S",
+                   help=f"Seconds between OSTI calls (default: {delays['osti']})")
+    p.add_argument("--delay-dblp", type=float, default=delays["dblp"], metavar="S",
+                   help=f"Seconds between DBLP calls (default: {delays['dblp']})")
+    p.add_argument("--delay-semanticscholar", type=float, default=delays["semanticscholar"], metavar="S",
+                   help=f"Seconds between Semantic Scholar calls (default: {delays['semanticscholar']})")
+    p.add_argument("--delay-arxiv", type=float, default=delays["arxiv"], metavar="S",
+                   help=f"Seconds between arXiv calls (default: {delays['arxiv']})")
+    p.add_argument("--delay-github", type=float, default=delays["github"], metavar="S",
+                   help=f"Seconds between GitHub liveness checks (default: {delays['github']})")
+    p.add_argument("--delay-url", type=float, default=delays["url"], metavar="S",
+                   help=f"Seconds between generic URL liveness checks (default: {delays['url']})")
     p.add_argument("--refs-cache", default=None, metavar="PATH",
                    help="Refs cache file (default: <pdf-stem>.refs.json next to PDF)")
     p.add_argument("--no-refs-cache", action="store_true",
