@@ -31,6 +31,11 @@ include = ["ref_checker*"]
 [tool.setuptools.package-data]
 ref_checker = ["skills/reference-checking/**/*"]
 
+[tool.pytest.ini_options]
+markers = [
+    "primo_live: marks tests that require PRIMO_BASE_URL/VID/INST to be set",
+]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 100

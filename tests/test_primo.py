@@ -4,10 +4,9 @@ The critical property tested first: every function is a safe no-op
 (returns (None, None) and never touches the network) when the three
 required env vars are not set.
 
-Live tests are opt-in: they require WAKE_PRIMO_BASE_URL, WAKE_PRIMO_VID,
-and WAKE_PRIMO_INST to be set in the environment, and borrow those values
-into the PRIMO_* vars that ref-checker uses.  They are skipped
-automatically when those vars are absent.
+Live tests are opt-in: they run only when PRIMO_BASE_URL, PRIMO_VID, and
+PRIMO_INST are set in the environment (e.g. via .env or exported vars).
+They are skipped automatically when those vars are absent.
 """
 from __future__ import annotations
 
@@ -24,8 +23,15 @@ _ENV_VARS = ("PRIMO_BASE_URL", "PRIMO_VID", "PRIMO_INST", "PRIMO_SCOPE")
 
 
 @pytest.fixture(autouse=True)
-def _clear_primo_env(monkeypatch):
-    """Every test starts fully unconfigured unless it sets vars explicitly."""
+def _clear_primo_env(request, monkeypatch):
+    """Every offline test starts fully unconfigured.
+
+    Tests marked ``primo_live`` opt out of this clearing so they can read
+    the real PRIMO_* vars from the environment.
+    """
+    if request.node.get_closest_marker("primo_live"):
+        yield
+        return
     for var in _ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     yield
@@ -388,13 +394,14 @@ _live = pytest.mark.skipif(
     reason="PRIMO_BASE_URL / PRIMO_VID / PRIMO_INST not set",
 )
 
-
 @_live
+@pytest.mark.primo_live
 def test_live_is_enabled():
     assert primo.is_enabled() is True
 
 
 @_live
+@pytest.mark.primo_live
 def test_live_get_by_doi_known_paper():
     ctx = primo.build_context()
     summary, sim = primo.get_by_doi("10.1145/3458817.3476177", ctx)
@@ -404,6 +411,7 @@ def test_live_get_by_doi_known_paper():
 
 
 @_live
+@pytest.mark.primo_live
 def test_live_search_by_title_known_paper():
     ctx = primo.build_context()
     title = "PVFS: A Parallel File System for Linux Clusters"
