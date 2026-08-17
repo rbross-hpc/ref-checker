@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "ref-checker"
-version         = "0.3.0.dev0"
-description     = "Verify bibliographic references against OpenAlex, CrossRef, DBLP, Semantic Scholar, and arXiv"
+version         = "0.3.0"
+description     = "Verify bibliographic references against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, and arXiv (optionally Ex Libris Primo)."
 readme          = "README.md"
 requires-python = ">=3.10"
 license         = "BSD-3-Clause"

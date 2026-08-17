@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2026-08-17
+
+### Added
+
 - **Ex Libris Primo source** (`ref_checker/sources/primo.py`): opt-in
   institutional discovery-layer source. Queries the Primo PNX REST API for
   DOI lookup and title search. Enabled by setting `PRIMO_BASE_URL`,
