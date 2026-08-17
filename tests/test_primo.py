@@ -380,33 +380,22 @@ class TestBuildContext:
 
 
 # ---------------------------------------------------------------------------
-# Live / integration tests — skipped unless WAKE_PRIMO_* env vars are set
+# Live / integration tests — skipped unless PRIMO_* env vars are set
 # ---------------------------------------------------------------------------
 
 _live = pytest.mark.skipif(
-    not all(os.environ.get(f"WAKE_PRIMO_{k}") for k in ("BASE_URL", "VID", "INST")),
-    reason="WAKE_PRIMO_BASE_URL / WAKE_PRIMO_VID / WAKE_PRIMO_INST not set",
+    not all(os.environ.get(f"PRIMO_{k}") for k in ("BASE_URL", "VID", "INST")),
+    reason="PRIMO_BASE_URL / PRIMO_VID / PRIMO_INST not set",
 )
 
 
-@pytest.fixture()
-def _live_primo_env(monkeypatch):
-    """Map WAKE_PRIMO_* values into the PRIMO_* vars that ref-checker reads."""
-    monkeypatch.setenv("PRIMO_BASE_URL", os.environ["WAKE_PRIMO_BASE_URL"])
-    monkeypatch.setenv("PRIMO_VID", os.environ["WAKE_PRIMO_VID"])
-    monkeypatch.setenv("PRIMO_INST", os.environ["WAKE_PRIMO_INST"])
-    scope = os.environ.get("WAKE_PRIMO_SCOPE", "")
-    if scope:
-        monkeypatch.setenv("PRIMO_SCOPE", scope)
-
-
 @_live
-def test_live_is_enabled(_live_primo_env):
+def test_live_is_enabled():
     assert primo.is_enabled() is True
 
 
 @_live
-def test_live_get_by_doi_known_paper(_live_primo_env):
+def test_live_get_by_doi_known_paper():
     ctx = primo.build_context()
     summary, sim = primo.get_by_doi("10.1145/3458817.3476177", ctx)
     assert summary is not None, "Expected a hit for a known DOI"
@@ -415,7 +404,7 @@ def test_live_get_by_doi_known_paper(_live_primo_env):
 
 
 @_live
-def test_live_search_by_title_known_paper(_live_primo_env):
+def test_live_search_by_title_known_paper():
     ctx = primo.build_context()
     title = "PVFS: A Parallel File System for Linux Clusters"
     summary, sim = primo.search_by_title(title, ctx)
