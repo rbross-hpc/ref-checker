@@ -1,6 +1,6 @@
 ---
 name: reference-checking
-description: Verify bibliographic references in an academic paper against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, and arXiv. Accepts either a PDF (references extracted via LLM) or a JSON list you supply directly. Use when the user asks to audit, check, or find real sources for citations.
+description: Verify bibliographic references in an academic paper against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, arXiv, and optionally an institutional Ex Libris Primo endpoint. Accepts either a PDF (references extracted via LLM) or a JSON list you supply directly. Use when the user asks to audit, check, or find real sources for citations.
 license: BSD-3-Clause
 metadata:
   audience: researchers, editors
@@ -23,10 +23,11 @@ databases. It accepts two equivalent input modes:
   extraction entirely. No PDF or LLM required.
 
 For either input, it looks up each reference across **OpenAlex**, **CrossRef**,
-**OSTI**, **DBLP**, **Semantic Scholar**, and **arXiv** in priority order, and performs
-URL liveness checks for GitHub repositories and web resources. Results are
-printed color-coded (**OK** / **CLOSEST** / **NO MATCH**) with similarity
-scores and notes for each reference.
+**OSTI**, **DBLP**, **Semantic Scholar**, and **arXiv** in priority order (preceded
+by an institutional **Ex Libris Primo** endpoint when configured — see env vars
+below), and performs URL liveness checks for GitHub repositories and web
+resources. Results are printed color-coded (**OK** / **CLOSEST** / **NO MATCH**)
+with similarity scores and notes for each reference.
 
 Progress and credential status are written to stderr. The reference report is
 written to stdout and can be redirected cleanly.
@@ -50,9 +51,14 @@ Verify: `ref-checker --help`
 | `OPENAI_MODEL` | No | Model name (default: `gpt-4o-mini`) |
 | `OPENALEX_MAILTO` | Recommended | Your email — enables the polite pool for OpenAlex/CrossRef |
 | `SEMANTICSCHOLAR_API_KEY` | Recommended | Without one, Semantic Scholar rate-limits aggressively |
+| `PRIMO_BASE_URL` | No | Institutional Primo host — enables Primo source when set with VID+INST |
+| `PRIMO_VID` | No | Primo view ID (required with `PRIMO_BASE_URL`) |
+| `PRIMO_INST` | No | Primo institution code (required with `PRIMO_BASE_URL`) |
+| `PRIMO_SCOPE` | No | Primo search scope (default: `MyInst_and_CI`) |
 
 Check credential status at startup — ref-checker prints a summary to stderr
-with sensitive values masked as `<set>`.
+with sensitive values masked as `<set>`. All four `PRIMO_*` vars are shown
+verbatim (none are sensitive).
 
 ## Common invocations
 
@@ -105,7 +111,8 @@ ref-checker lookup arxiv --id 1706.03762
 ```
 
 Prints a JSON object with `summary`, `similarity`, and `source` fields.
-Available sources: `openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, `arxiv`.
+Available sources: `openalex`, `crossref`, `osti`, `dblp`, `semanticscholar`, `arxiv`
+(plus `primo` when configured).
 
 ## Resuming interrupted runs
 
