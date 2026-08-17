@@ -21,7 +21,7 @@ import inspect
 
 import pytest
 
-from ref_checker.sources import base
+from ref_checker.sources import base, primo
 from ref_checker.sources.base import FN_BY_KIND as _FN_BY_KIND
 from ref_checker.sources.registry import (
     DEFAULT_DELAYS,
@@ -127,3 +127,32 @@ class TestSourceFunctionSignatures:
     @pytest.mark.parametrize("src", LIVENESS_SOURCES, ids=lambda s: s.SOURCE_NAME)
     def test_check_url_has_trailing_ctx(self, src):
         _assert_trailing_ctx_param(src.check_url, f"{src.SOURCE_NAME}.check_url")
+
+
+class TestPrimoModuleContract:
+    """Verify the primo module satisfies the ScholarlySource Protocol and
+    has the correct function signatures unconditionally — regardless of
+    whether it is enabled (i.e. whether it appears in SCHOLARLY_SOURCES).
+    """
+
+    def test_satisfies_scholarly_source_protocol(self):
+        assert isinstance(primo, base.ScholarlySource)
+
+    def test_declared_kinds_have_matching_functions(self):
+        for kind in primo.SUPPORTED_QUERY_KINDS:
+            fn_name = _FN_BY_KIND[kind]
+            assert hasattr(primo, fn_name), (
+                f"primo declares {kind} in SUPPORTED_QUERY_KINDS but has no {fn_name}()"
+            )
+
+    def test_build_context_takes_no_parameters(self):
+        _assert_takes_no_params(primo.build_context, "primo.build_context")
+
+    def test_lookup_functions_have_trailing_ctx(self):
+        for kind in primo.SUPPORTED_QUERY_KINDS:
+            fn_name = _FN_BY_KIND[kind]
+            fn = getattr(primo, fn_name)
+            _assert_trailing_ctx_param(fn, f"primo.{fn_name}")
+
+    def test_is_enabled_is_callable(self):
+        assert callable(primo.is_enabled)

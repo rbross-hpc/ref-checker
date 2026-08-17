@@ -4,9 +4,10 @@ Verify bibliographic references in an academic paper against live scholarly
 databases. `ref-checker` accepts two equivalent inputs — a **PDF** (references
 extracted via LLM) or a **JSON list** you supply directly — and looks each
 reference up across **OpenAlex**, **CrossRef**, **OSTI**, **DBLP**,
-**Semantic Scholar**, and **arXiv** in sequence, performing URL liveness
-checks for software repositories and web resources. Results are printed in
-citation order with color-coded status. It also ships a bundled
+**Semantic Scholar**, and **arXiv** in sequence (optionally preceded by an
+institutional **Ex Libris Primo** endpoint when configured), performing URL
+liveness checks for software repositories and web resources. Results are
+printed in citation order with color-coded status. It also ships a bundled
 [Agent Skill](https://opencode.ai/docs/skills/) for AI coding assistants.
 
 For a detailed description of the design and implementation, see [PLAN.md](PLAN.md).
@@ -57,6 +58,21 @@ Set these before running:
 | `SEMANTICSCHOLAR_API_KEY` | Recommended | Semantic Scholar API key — without one, unauthenticated requests are aggressively rate-limited. Register free at semanticscholar.org/product/api |
 
 Sensitive values are displayed as `<set>` in the credential summary at startup.
+
+### Optional: Ex Libris Primo (institutional discovery layer)
+
+`ref-checker` can query an institutional [Ex Libris Primo](https://exlibrisgroup.com/products/primo-discovery-service/) endpoint as an additional source. Primo aggregates publisher metadata (Elsevier, Springer, IEEE, ACM, ...) behind a single institutional discovery interface and often covers papers that OpenAlex or CrossRef miss. When configured it runs **first** in the lookup chain, before OpenAlex.
+
+This feature is **entirely opt-in and disabled by default**. No Primo endpoint is ever contacted unless all three required variables below are set. Any institution running Primo can use this; the endpoint is specific to your library.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `PRIMO_BASE_URL` | Yes (to enable) | Your institution's Primo host, e.g. `https://your-institution.primo.exlibrisgroup.com` |
+| `PRIMO_VID` | Yes (to enable) | Primo view ID, e.g. `01YOUR_INST:01YOUR_INST` |
+| `PRIMO_INST` | Yes (to enable) | Primo institution code, e.g. `01YOUR_INST` |
+| `PRIMO_SCOPE` | No | Search scope (default: `MyInst_and_CI`) |
+
+All four variables are shown in the credential summary at startup (with their current values, since none are sensitive).
 
 ## Usage
 
@@ -214,6 +230,10 @@ ref-checker lookup crossref --title "Attention is all you need"
 
 ref-checker lookup osti --doi 10.2172/1234567
 ref-checker lookup osti --title "Exascale Computing Project Final Report"
+
+# Primo (only available when PRIMO_BASE_URL / PRIMO_VID / PRIMO_INST are set)
+ref-checker lookup primo --doi 10.1145/3458817.3476177
+ref-checker lookup primo --title "PVFS: A Parallel File System for Linux Clusters"
 
 ref-checker lookup semanticscholar --doi 10.1145/...
 ref-checker lookup semanticscholar --arxiv-id 1706.03762

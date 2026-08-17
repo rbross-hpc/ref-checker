@@ -8,7 +8,7 @@ import sys
 
 from .. import check, extract, pdf
 from ..model import QueryKind
-from ..sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
+from ..sources import arxiv, crossref, dblp, openalex, osti, primo, semanticscholar
 from ..sources.base import FN_BY_KIND as _FN_BY_KIND
 from ..sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
 from . import show as show_mod
@@ -46,6 +46,9 @@ def _build_check_parser(sub) -> None:
                    help="Trailing pages to use as fallback when no References heading found (default: 5)")
     p.add_argument("--min-match", type=float, default=0.80, metavar="F",
                    help="Minimum similarity to report as CLOSEST (default: 0.80)")
+    if primo.is_enabled():
+        p.add_argument("--delay-primo", type=float, default=_DEFAULT_DELAYS.get("primo", primo.DEFAULT_DELAY), metavar="S",
+                       help=f"Seconds between Primo calls (default: {primo.DEFAULT_DELAY})")
     p.add_argument("--delay-openalex", type=float, default=_DEFAULT_DELAYS["openalex"], metavar="S",
                    help=f"Seconds between OpenAlex calls (default: {_DEFAULT_DELAYS['openalex']})")
     p.add_argument("--delay-crossref", type=float, default=_DEFAULT_DELAYS["crossref"], metavar="S",
@@ -143,6 +146,7 @@ def _build_skill_parser(sub) -> None:
 
 
 _LOOKUP_SOURCES = {
+    **({"primo": primo} if primo.is_enabled() else {}),
     "openalex": openalex,
     "crossref": crossref,
     "osti": osti,
@@ -180,6 +184,10 @@ def _log_credentials() -> None:
         ("OPENAI_MODEL",              "LLM model override (default: gpt-4o-mini)"),
         ("OPENALEX_MAILTO",           "OpenAlex/CrossRef polite pool (recommended)"),
         ("SEMANTICSCHOLAR_API_KEY",   "Semantic Scholar authenticated tier"),
+        ("PRIMO_BASE_URL",            "Ex Libris Primo base URL (optional, enables Primo source)"),
+        ("PRIMO_VID",                 "Primo view ID (required with PRIMO_BASE_URL)"),
+        ("PRIMO_INST",                "Primo institution code (required with PRIMO_BASE_URL)"),
+        ("PRIMO_SCOPE",               "Primo search scope (optional, default: MyInst_and_CI)"),
     ]
     _SENSITIVE = {"OPENAI_API_KEY", "SEMANTICSCHOLAR_API_KEY"}
     for var, description in items:
@@ -219,6 +227,7 @@ def run_check(args) -> None:
     _log_credentials()
 
     delays = {
+        **({"primo": args.delay_primo} if primo.is_enabled() else {}),
         "openalex":        args.delay_openalex,
         "crossref":        args.delay_crossref,
         "osti":            args.delay_osti,
