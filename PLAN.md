@@ -5,9 +5,11 @@ against live scholarly databases. References can be provided as a **PDF**
 (text extracted and parsed via LLM) or as a **JSON list** supplied directly,
 with both paths producing identical lookup and reporting behaviour. Each
 reference is checked against OpenAlex, CrossRef, OSTI, DBLP, Semantic
-Scholar, and arXiv. For references that are software repositories or web
-resources (with no scholarly record), it performs URL liveness checks
-against GitHub and general web URLs. Results are printed in citation order
+Scholar, and arXiv (optionally preceded by an institutional Ex Libris Primo
+endpoint when configured via `PRIMO_BASE_URL`/`PRIMO_VID`/`PRIMO_INST`).
+For references that are software repositories or web resources (with no
+scholarly record), it performs URL liveness checks against GitHub and
+general web URLs. Results are printed in citation order
 with color-coded status indicators.
 
 This file is a short index. See:
@@ -74,6 +76,7 @@ ref-checker/
         ├── base.py                # ScholarlySource / LivenessSource capability Protocols
         ├── registry.py            # static SCHOLARLY_SOURCES / ALL_SOURCE_NAMES / DEFAULT_DELAYS
         ├── _http.py               # shared Retry-After parsing helpers
+        ├── primo.py               # optional institutional Primo source (first when configured)
         ├── openalex.py            # primary scholarly source
         ├── crossref.py            # secondary scholarly source
         ├── osti.py                # DOE OSTI (technical reports + DOE journal articles)
@@ -96,10 +99,10 @@ landed shape, and the external assessment at
 `../20260806-ref-checker-assessment.md` (§6, "HTTP behavior is shared
 conceptually, but not structurally").
 
-**Status: both parts done.** Part 1 (the 6 scholarly sources) and Part 2
-(the 2 liveness sources, `github.py`/`url.py`) have both landed — every
-source module now has `build_context()` and takes a mandatory trailing
-`ctx: SourceContext`.
+**Status: both parts done, plus Primo.** Part 1 (the 6 scholarly sources),
+Part 2 (the 2 liveness sources, `github.py`/`url.py`), and a subsequent
+optional Primo source (`primo.py`) have all landed — every source module has
+`build_context()` and takes a mandatory trailing `ctx: SourceContext`.
 
 **Scope decision**: `SourceContext` holds `session` + `credentials` only.
 Rate limiting (`_RateLimiter`) and retry (`_retry`) stay exactly where they

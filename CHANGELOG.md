@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Ex Libris Primo source** (`ref_checker/sources/primo.py`): opt-in
+  institutional discovery-layer source. Queries the Primo PNX REST API for
+  DOI lookup and title search. Enabled by setting `PRIMO_BASE_URL`,
+  `PRIMO_VID`, and `PRIMO_INST`; completely inert (safe no-op) when unset.
+  When configured, runs first in the scholarly lookup chain (before OpenAlex)
+  and is available via `ref-checker lookup primo`. All four `PRIMO_*` vars
+  shown in the credential summary at startup.
+
+- **`.env` file support** (`python-dotenv`): the CLI now loads a `.env` file
+  from the working directory at startup (`override=False` — real env vars
+  always win). `.env` is gitignored. Allows setting `PRIMO_*`,
+  `OPENAI_API_KEY`, etc. without manual `export`.
+
 - **Checked-in matching-quality benchmark corpus**
   (`tests/fixtures/matching_benchmark.json` +
   `tests/test_matching_benchmark.py`): 41 hand-curated `(ref_title,
