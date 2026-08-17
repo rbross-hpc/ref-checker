@@ -6,13 +6,17 @@ import json
 import os
 import sys
 
-from .. import check, extract, pdf
-from ..model import QueryKind
-from ..sources import arxiv, crossref, dblp, openalex, osti, primo, semanticscholar
-from ..sources.base import FN_BY_KIND as _FN_BY_KIND
-from ..sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS
-from . import show as show_mod
-from . import skill as skill_mod
+from dotenv import load_dotenv
+
+load_dotenv(override=False)
+
+from .. import check, extract, pdf  # noqa: E402
+from ..model import QueryKind  # noqa: E402
+from ..sources import arxiv, crossref, dblp, openalex, osti, primo, semanticscholar  # noqa: E402
+from ..sources.base import FN_BY_KIND as _FN_BY_KIND  # noqa: E402
+from ..sources.registry import DEFAULT_DELAYS as _DEFAULT_DELAYS  # noqa: E402
+from . import show as show_mod  # noqa: E402
+from . import skill as skill_mod  # noqa: E402
 
 
 def _build_parser() -> argparse.ArgumentParser:
