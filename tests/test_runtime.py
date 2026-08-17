@@ -42,10 +42,10 @@ class TestSourceHealth:
         assert not h.is_disabled("openalex")
 
     def test_all_scholarly_disabled_detects_full_outage(self):
-        from ref_checker.sources.registry import SCHOLARLY_SOURCE_NAMES
+        from ref_checker.sources.registry import scholarly_source_names
 
         h = runtime_mod.SourceHealth(threshold=1)
-        for name in SCHOLARLY_SOURCE_NAMES:
+        for name in scholarly_source_names():
             h.record(name, "error")
         assert h.all_scholarly_disabled()
 

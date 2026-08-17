@@ -10,7 +10,7 @@ import threading
 
 from ref_checker.sources.base import SourceContext
 from ref_checker.sources.registry import (
-    ALL_SOURCE_NAMES,
+    all_source_names,
     ThreadLocalSourceContexts,
 )
 
@@ -120,6 +120,6 @@ class TestThreadLocalSourceContexts:
 
     def test_all_source_names_resolvable(self):
         contexts = ThreadLocalSourceContexts()
-        for name in ALL_SOURCE_NAMES:
+        for name in all_source_names():
             ctx = contexts.get(name)
             assert ctx is not None, f"{name} did not resolve to a context"

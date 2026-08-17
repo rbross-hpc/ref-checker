@@ -1,38 +1,72 @@
-"""Static registry of source modules and derived name lists.
+"""Runtime registry of source modules and derived name lists.
 
-Extracted so both ``runtime.py`` (circuit breaker) and ``check.py``
-(orchestration) can reference the same source-name lists without either
-depending on the other.
+Exported as **functions** rather than module-level constants so that
+optional sources (currently: Primo) are evaluated at call time against the
+live environment, not at import time.  This means:
 
-Primo is conditionally included: it is an opt-in institutional source that
-requires ``PRIMO_BASE_URL``, ``PRIMO_VID``, and ``PRIMO_INST`` to be set.
-When those env vars are present ``primo.is_enabled()`` returns True and the
-source is prepended to ``SCHOLARLY_SOURCES`` (tried first, before OpenAlex).
-When unconfigured, it is absent from every derived list and from the CLI.
+- Tests can control which sources appear simply by setting or clearing the
+  relevant env vars — no monkeypatching of module-level lists required.
+- ``conftest.py``'s ``load_dotenv()`` runs before any test executes, so the
+  right set of sources is seen by every call site without ordering surprises.
+- Future optional sources follow the same pattern: add an ``is_enabled()``
+  guard inside ``scholarly_sources()`` and nothing else needs to change.
+
+``LIVENESS_SOURCES`` is unconditional today (both ``github`` and ``url`` are
+always active), but is exposed as a function for API symmetry.
+
+``ThreadLocalSourceContexts`` is unchanged in behaviour; its internals call
+``sources_by_name()`` at access time rather than at construction time.
 """
 from __future__ import annotations
 
 import threading
+from typing import Any
 
 from . import arxiv, crossref, dblp, github, openalex, osti, primo, semanticscholar
 from . import url as url_source
 from .base import SourceContext
 
-_PRIMO_SOURCES = [primo] if primo.is_enabled() else []
-SCHOLARLY_SOURCES = _PRIMO_SOURCES + [openalex, crossref, osti, dblp, semanticscholar, arxiv]
-LIVENESS_SOURCES = [github, url_source]
-_ALL_SOURCES = SCHOLARLY_SOURCES + LIVENESS_SOURCES
+_ALWAYS_SCHOLARLY = [openalex, crossref, osti, dblp, semanticscholar, arxiv]
+_LIVENESS = [github, url_source]
 
-ALL_SOURCE_NAMES = [s.SOURCE_NAME for s in _ALL_SOURCES]
-SCHOLARLY_SOURCE_NAMES = [s.SOURCE_NAME for s in SCHOLARLY_SOURCES]
 
-# Single source of truth for per-source rate-limit defaults, derived from
-# each module's own DEFAULT_DELAY. engine.py, runner.py, and cli/main.py's
-# --delay-<source> argparse defaults all import this instead of maintaining
-# their own copies of the same dict.
-DEFAULT_DELAYS: dict[str, float] = {s.SOURCE_NAME: s.DEFAULT_DELAY for s in _ALL_SOURCES}
+def scholarly_sources() -> list[Any]:
+    """Return the ordered list of scholarly source modules for this run.
 
-_SOURCES_BY_NAME = {s.SOURCE_NAME: s for s in _ALL_SOURCES}
+    Primo is prepended when ``primo.is_enabled()`` returns True (i.e. all
+    three of ``PRIMO_BASE_URL``, ``PRIMO_VID``, and ``PRIMO_INST`` are set).
+    Evaluated fresh on every call — no caching.
+    """
+    if primo.is_enabled():
+        return [primo] + _ALWAYS_SCHOLARLY
+    return list(_ALWAYS_SCHOLARLY)
+
+
+def liveness_sources() -> list[Any]:
+    """Return the list of liveness source modules."""
+    return list(_LIVENESS)
+
+
+def all_sources() -> list[Any]:
+    """Return scholarly + liveness sources for this run."""
+    return scholarly_sources() + liveness_sources()
+
+
+def scholarly_source_names() -> list[str]:
+    return [s.SOURCE_NAME for s in scholarly_sources()]
+
+
+def all_source_names() -> list[str]:
+    return [s.SOURCE_NAME for s in all_sources()]
+
+
+def default_delays() -> dict[str, float]:
+    """Return per-source default delays derived from each module's DEFAULT_DELAY."""
+    return {s.SOURCE_NAME: s.DEFAULT_DELAY for s in all_sources()}
+
+
+def sources_by_name() -> dict[str, Any]:
+    return {s.SOURCE_NAME: s for s in all_sources()}
 
 
 def build_all_contexts() -> dict[str, SourceContext]:
@@ -44,7 +78,7 @@ def build_all_contexts() -> dict[str, SourceContext]:
     ``check_references()`` uses :class:`ThreadLocalSourceContexts` instead —
     see its docstring for why a flat dict is unsafe across worker threads.
     """
-    return {s.SOURCE_NAME: s.build_context() for s in _ALL_SOURCES}
+    return {s.SOURCE_NAME: s.build_context() for s in all_sources()}
 
 
 class ThreadLocalSourceContexts:
@@ -94,7 +128,7 @@ class ThreadLocalSourceContexts:
         by_name = self._thread_dict()
         ctx = by_name.get(source_name)
         if ctx is None:
-            src = _SOURCES_BY_NAME.get(source_name)
+            src = sources_by_name().get(source_name)
             if src is None:
                 return None
             ctx = src.build_context()
@@ -104,11 +138,6 @@ class ThreadLocalSourceContexts:
         return ctx
 
     def __setitem__(self, source_name: str, ctx: SourceContext) -> None:
-        # engine.py:_ctx_for() falls back to this after a build_context()
-        # call when get() returned None — dead in practice for this class
-        # (get() always builds and returns a context for a known source
-        # name), but implemented for full duck-type parity with the plain
-        # dict this class replaces.
         by_name = self._thread_dict()
         if source_name not in by_name:
             with self._built_lock:
@@ -116,13 +145,7 @@ class ThreadLocalSourceContexts:
         by_name[source_name] = ctx
 
     def close_all(self) -> None:
-        """Close every session built by any thread during this run.
-
-        Safe to call once, after every worker thread has finished (i.e.
-        from the main thread after the pool has been shut down / joined) —
-        session objects themselves are not used concurrently with this
-        call at that point.
-        """
+        """Close every session built by any thread during this run."""
         with self._built_lock:
             built = list(self._built)
         for ctx in built:

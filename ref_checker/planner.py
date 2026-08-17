@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .model import OutcomeKind
 from .results import LookupResult
-from .sources.registry import ALL_SOURCE_NAMES
+from .sources.registry import all_source_names
 
 
 def _plan_ref_work(
@@ -27,7 +27,7 @@ def _plan_ref_work(
         will keep the prior result and log accordingly.
     """
     if prior_result is None or prior_status is None:
-        return set(ALL_SOURCE_NAMES)
+        return set(all_source_names())
 
     if prior_status == "OK":
         if prior_result.exhausted_sources:
@@ -41,7 +41,7 @@ def _plan_ref_work(
         return None
 
     targets: set[str] = set()
-    for src in ALL_SOURCE_NAMES:
+    for src in all_source_names():
         entry = prior_result.per_source.get(src)
         if entry is None:
             targets.add(src)

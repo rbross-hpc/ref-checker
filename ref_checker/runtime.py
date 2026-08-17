@@ -14,7 +14,7 @@ from typing import Callable
 
 from .errors import RateLimited
 from .results import _Stats
-from .sources.registry import SCHOLARLY_SOURCE_NAMES
+from .sources.registry import scholarly_source_names
 
 _RETRY_BACKOFF = (5.0, 10.0, 15.0)
 
@@ -185,7 +185,7 @@ class SourceHealth:
 
     def all_scholarly_disabled(self) -> bool:
         with self._lock:
-            return all(name in self._disabled for name in SCHOLARLY_SOURCE_NAMES)
+            return all(name in self._disabled for name in scholarly_source_names())
 
 
 class _RateLimiter:
