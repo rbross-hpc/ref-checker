@@ -50,12 +50,29 @@ def _summary(title="A Paper", year=2020, doi="10.1/x"):
 
 @pytest.fixture(autouse=True)
 def _no_delays(monkeypatch):
-    """Zero out per-source delays so tests don't sleep."""
+    """Zero out per-source delays so tests don't sleep.
+
+    Also clears PRIMO_* env vars so that loading .env doesn't accidentally
+    enable Primo and cause these runner tests to make real network calls.
+    """
     monkeypatch.setattr(
         runner_mod, "_DEFAULT_DELAYS",
         {k: 0.0 for k in runner_mod._DEFAULT_DELAYS},
     )
     monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    for var in ("PRIMO_BASE_URL", "PRIMO_VID", "PRIMO_INST", "PRIMO_SCOPE"):
+        monkeypatch.delenv(var, raising=False)
+    from ref_checker.sources import registry as registry_mod
+    from ref_checker import engine as engine_mod2
+    import tests.test_runner as _self
+    non_primo = [s for s in registry_mod.SCHOLARLY_SOURCES if s.SOURCE_NAME != "primo"]
+    non_primo_names = [s.SOURCE_NAME for s in non_primo]
+    all_non_primo_names = [n for n in registry_mod.ALL_SOURCE_NAMES if n != "primo"]
+    monkeypatch.setattr(registry_mod, "SCHOLARLY_SOURCES", non_primo)
+    monkeypatch.setattr(engine_mod2, "_SCHOLARLY_SOURCES", non_primo)
+    monkeypatch.setattr(runtime_mod, "SCHOLARLY_SOURCE_NAMES", non_primo_names)
+    monkeypatch.setattr(_self, "SCHOLARLY_SOURCE_NAMES", non_primo_names)
+    monkeypatch.setattr(_self, "ALL_SOURCE_NAMES", all_non_primo_names)
 
 
 @pytest.fixture
@@ -65,7 +82,7 @@ def stub_sources(monkeypatch):
     Tests can override individual functions to inject behavior.
     """
     from ref_checker.sources import (
-        arxiv, crossref, dblp, github, openalex, osti, semanticscholar,
+        arxiv, crossref, dblp, github, openalex, osti, primo, semanticscholar,
         url as url_source,
     )
     for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
@@ -75,6 +92,7 @@ def stub_sources(monkeypatch):
     monkeypatch.setattr(github, "check_url", lambda *a, **kw: (None, None, []))
     monkeypatch.setattr(url_source, "check_url", lambda *a, **kw: (None, None, []))
     return {
+        "primo": primo,
         "openalex": openalex,
         "crossref": crossref,
         "osti": osti,

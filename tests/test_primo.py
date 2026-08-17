@@ -389,18 +389,21 @@ class TestBuildContext:
 # Live / integration tests — skipped unless PRIMO_* env vars are set
 # ---------------------------------------------------------------------------
 
-_live = pytest.mark.skipif(
-    not all(os.environ.get(f"PRIMO_{k}") for k in ("BASE_URL", "VID", "INST")),
-    reason="PRIMO_BASE_URL / PRIMO_VID / PRIMO_INST not set",
-)
 
-@_live
+@pytest.fixture(autouse=True)
+def _skip_live_if_unconfigured(request):
+    """Skip primo_live tests at call time (not collection time) so that
+    conftest.py's load_dotenv() has already run when the check executes."""
+    if request.node.get_closest_marker("primo_live"):
+        if not all(os.environ.get(f"PRIMO_{k}") for k in ("BASE_URL", "VID", "INST")):
+            pytest.skip("PRIMO_BASE_URL / PRIMO_VID / PRIMO_INST not set")
+
+
 @pytest.mark.primo_live
 def test_live_is_enabled():
     assert primo.is_enabled() is True
 
 
-@_live
 @pytest.mark.primo_live
 def test_live_get_by_doi_known_paper():
     ctx = primo.build_context()
@@ -410,7 +413,6 @@ def test_live_get_by_doi_known_paper():
     assert summary["source"] == "primo"
 
 
-@_live
 @pytest.mark.primo_live
 def test_live_search_by_title_known_paper():
     ctx = primo.build_context()
