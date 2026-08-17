@@ -3,16 +3,23 @@
 Extracted so both ``runtime.py`` (circuit breaker) and ``check.py``
 (orchestration) can reference the same source-name lists without either
 depending on the other.
+
+Primo is conditionally included: it is an opt-in institutional source that
+requires ``PRIMO_BASE_URL``, ``PRIMO_VID``, and ``PRIMO_INST`` to be set.
+When those env vars are present ``primo.is_enabled()`` returns True and the
+source is prepended to ``SCHOLARLY_SOURCES`` (tried first, before OpenAlex).
+When unconfigured, it is absent from every derived list and from the CLI.
 """
 from __future__ import annotations
 
 import threading
 
-from . import arxiv, crossref, dblp, github, openalex, osti, semanticscholar
+from . import arxiv, crossref, dblp, github, openalex, osti, primo, semanticscholar
 from . import url as url_source
 from .base import SourceContext
 
-SCHOLARLY_SOURCES = [openalex, crossref, osti, dblp, semanticscholar, arxiv]
+_PRIMO_SOURCES = [primo] if primo.is_enabled() else []
+SCHOLARLY_SOURCES = _PRIMO_SOURCES + [openalex, crossref, osti, dblp, semanticscholar, arxiv]
 LIVENESS_SOURCES = [github, url_source]
 _ALL_SOURCES = SCHOLARLY_SOURCES + LIVENESS_SOURCES
 
