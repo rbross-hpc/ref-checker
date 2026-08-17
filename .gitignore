@@ -31,3 +31,6 @@ Thumbs.db
 # Local tool config
 opencode.json
 AGENTS.md
+
+# Local environment variables (never commit secrets)
+.env
