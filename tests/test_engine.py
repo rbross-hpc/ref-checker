@@ -44,12 +44,22 @@ def _summary(title="A Paper", year=2020, doi="10.1/x"):
 
 @pytest.fixture(autouse=True)
 def _no_delays(monkeypatch):
-    """Zero out per-source delays and retry backoff so tests don't sleep."""
+    """Zero out per-source delays and retry backoff so tests don't sleep.
+
+    Also clears PRIMO_* env vars so that loading .env doesn't accidentally
+    enable Primo and cause these engine tests to make real network calls.
+    """
     monkeypatch.setattr(
         engine_mod, "_DEFAULT_DELAYS",
         {k: 0.0 for k in engine_mod._DEFAULT_DELAYS},
     )
     monkeypatch.setattr(runtime_mod, "_RETRY_BACKOFF", (0.0, 0.0, 0.0))
+    for var in ("PRIMO_BASE_URL", "PRIMO_VID", "PRIMO_INST", "PRIMO_SCOPE"):
+        monkeypatch.delenv(var, raising=False)
+    from ref_checker.sources import registry as registry_mod
+    non_primo = [s for s in registry_mod.SCHOLARLY_SOURCES if s.SOURCE_NAME != "primo"]
+    monkeypatch.setattr(registry_mod, "SCHOLARLY_SOURCES", non_primo)
+    monkeypatch.setattr(engine_mod, "_SCHOLARLY_SOURCES", non_primo)
 
 
 @pytest.fixture
@@ -59,7 +69,7 @@ def stub_sources(monkeypatch):
     Tests can override individual functions to inject behavior.
     """
     from ref_checker.sources import (
-        arxiv, crossref, dblp, github, openalex, osti, semanticscholar,
+        arxiv, crossref, dblp, github, openalex, osti, primo, semanticscholar,
         url as url_source,
     )
     for src in (openalex, crossref, osti, dblp, semanticscholar, arxiv):
@@ -69,6 +79,7 @@ def stub_sources(monkeypatch):
     monkeypatch.setattr(github, "check_url", lambda *a, **kw: (None, None, []))
     monkeypatch.setattr(url_source, "check_url", lambda *a, **kw: (None, None, []))
     return {
+        "primo": primo,
         "openalex": openalex,
         "crossref": crossref,
         "osti": osti,
