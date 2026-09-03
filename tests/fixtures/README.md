@@ -7,6 +7,28 @@ committed as bare JSON arrays conforming to
 Fixtures under `refs/` are treated as **golden data**: extract-once, commit,
 and reuse across many test runs. Do not regenerate on every test run.
 
+## Live LLM tests (`llm_live` marker)
+
+`tests/test_call_llm_live.py` re-downloads the `zfp_spectral` and
+`dorier_mofka` source PDFs (see Provenance below for URLs) and runs them
+through `extract._call_llm` against a real LLM endpoint, checking the
+result against the golden fixtures in `refs/`. These tests:
+
+- Are skipped unless both `OPENAI_API_KEY` and `OPENAI_BASE_URL` are set
+  (requiring `OPENAI_BASE_URL` avoids accidentally spending real OpenAI
+  credit against `api.openai.com` — these tests are specifically about
+  Argo-shaped failure modes).
+- Cache the downloaded PDFs under
+  `/tmp/opencode/ref-checker-live-fixtures/<osti_id>.pdf` — not committed
+  to the repo.
+- Compare reference count exactly, and `doi`/`arxiv_id`/`github_url`
+  per-index (these are backfilled deterministically by
+  `extract._backfill_identifiers`, not LLM-generated, so they're stable
+  across models/runs). Title/author/venue text is not asserted, since the
+  LLM's exact phrasing isn't guaranteed stable.
+- Require `OPENAI_MODEL` to be set to a model your endpoint actually
+  serves — Argo does not recognize the package default (`gpt-4o-mini`).
+
 ## Provenance
 
 Five fixtures were extracted from publicly-available redistributable papers
