@@ -26,6 +26,14 @@ _SPLIT_WORD_RE = re.compile(r"(?<=\w) ([A-Z]) ([a-z]{3,})\b")
 _HYPHEN_JOIN_RE = re.compile(r"([a-zA-Z])-\n([a-z])")
 _URL_RE_PROTECT = re.compile(r"https?://\S+", re.IGNORECASE)
 
+# How close (in characters) an _END_SECTION_RE match must be to a preceding
+# page marker to count as "starting a new page" -- see _trim_post_references.
+_PAGE_PROXIMITY_LOOKBACK = 200
+
+# If a trim discards more than this fraction of the references section,
+# warn on stderr -- see _trim_post_references.
+_LARGE_TRIM_WARNING_THRESHOLD = 0.5
+
 _DOI_RE = re.compile(
     r"(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
     re.IGNORECASE,
@@ -322,11 +330,56 @@ def _fix_split_words(text: str) -> str:
     return text
 
 
+def _match_starts_new_page(match_start: int, page_markers: list[re.Match]) -> bool:
+    """True if *match_start* falls shortly after a <!-- page N --> marker.
+
+    In a two-column journal layout, pypdf/pdfplumber emit text page by page,
+    which routinely places a page's trailing boilerplate (running footer,
+    funding statement, acknowledgments block) between two reference entries
+    that are visually contiguous to a human reader across the page break --
+    the reference list resumes on the next page. A genuine post-references
+    section (a real Appendix/Acknowledgments), by contrast, essentially
+    always starts a new page. This structural signal is available for every
+    PDF processed by pdf.convert() regardless of citation style, unlike a
+    content-density heuristic (DOI density is silent on reference lists with
+    no DOIs; a quick check found year-density too easily confused by a short
+    prose block, e.g. a real funding statement, sitting between a false match
+    and the page break that follows it).
+    """
+    preceding = None
+    for pm in page_markers:
+        if pm.end() > match_start:
+            break
+        preceding = pm
+    if preceding is None:
+        return False
+    return match_start - preceding.end() <= _PAGE_PROXIMITY_LOOKBACK
+
+
 def _trim_post_references(text: str) -> str:
-    """Truncate at any section that follows the references (appendix, acknowledgements, etc.)."""
-    end = _END_SECTION_RE.search(text)
-    if end:
-        return text[:end.start()]
+    """Truncate at the first section that genuinely follows the references
+    (appendix, acknowledgements, etc.), skipping any _END_SECTION_RE match
+    that doesn't start a new page -- see _match_starts_new_page for why that
+    signal distinguishes a real post-references section from a PDF-extraction
+    artifact that interleaves page-trailing boilerplate into the middle of
+    the reference list. Returns *text* unchanged if no match qualifies.
+    """
+    page_markers = list(_PAGE_MARKER_RE.finditer(text))
+
+    for match in _END_SECTION_RE.finditer(text):
+        if _match_starts_new_page(match.start(), page_markers):
+            trimmed = text[:match.start()]
+            discarded_fraction = 1 - (len(trimmed) / len(text)) if text else 0
+            if discarded_fraction > _LARGE_TRIM_WARNING_THRESHOLD:
+                print(
+                    f"[ref-checker] Warning: narrowing discarded "
+                    f"{discarded_fraction:.0%} of the references section at "
+                    f"{match.group(0).strip()!r} -- if this looks wrong, "
+                    f"references may have been lost.",
+                    file=sys.stderr,
+                )
+            return trimmed
+
     return text
 
 

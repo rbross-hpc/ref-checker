@@ -32,6 +32,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   failing that, recovers the first balanced `{...}` object from the
   response before parsing.
 
+- **Reference narrowing no longer silently discards most of the reference
+  list when a section heading appears mid-list**
+  (`ref_checker/extract.py`'s `_trim_post_references`): in a two-column
+  journal layout, `pdf.convert()` emits text page by page, which routinely
+  places a page's trailing boilerplate (running footer, funding statement,
+  acknowledgments block) between two reference entries that are visually
+  contiguous to a human reader across the page break. `_trim_post_references`
+  used to truncate at the *first* `Appendix`/`Acknowledgments`/etc. match
+  unconditionally, silently discarding everything after it — with no
+  warning, in a tool whose purpose is verifying references are correct. It
+  now only trusts a match that starts a new page (within a short window
+  after a `<!-- page N -->` marker), which is the case for a genuine
+  post-references section but not for this PDF-extraction artifact; a
+  match that doesn't qualify is skipped in favor of a later one, or the
+  text is returned untrimmed if none qualifies. Also now warns on stderr
+  when a trim discards more than half of the references section, so a
+  future variant of this failure is visible rather than silent.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

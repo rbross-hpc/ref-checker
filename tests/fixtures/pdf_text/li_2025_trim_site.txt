@@ -1,0 +1,54 @@
+_c-cache-config-t.html. Ac-
+cessed: 2025-07-13.
+[22] The HDF Group. 2025. hdfgroup.org. https://www.hdfgroup.org/wp-content/
+uploads/2020/06/2020-06-26-Parallel-HDF5-Performance-Tuning.pdf. [Ac-
+cessed 17-01-2025].
+[23] The HDF Group. 2025. The HDF5 Library & File Format - The HDF Group -
+ensuring long-term access and usability of HDF data and supporting users of
+HDF technologies — hdfgroup.org. https://www.hdfgroup.org/solutions/hdf5/.
+[Accessed 17-01-2025].
+[24] The Unidata. 2025. Unidata | NetCDF — unidata.ucar.edu. https://www.unidata.
+ucar.edu/software/netcdf/. [Accessed 17-01-2025].
+[25] Zonghan Wu, Shirui Pan, Guodong Long, Jing Jiang, and Chengqi Zhang. 2019.
+Graph wavenet for deep spatial-temporal graph modeling. arXiv preprint
+arXiv:1906.00121 (2019).
+[26] Bing Yu, Haoteng Yin, and Zhanxing Zhu. 2017. Spatio-temporal graph con-
+volutional networks: A deep learning framework for traffic forecasting. arXiv
+preprint arXiv:1709.04875 (2017).
+[27] Le Yu, Leilei Sun, Bowen Du, and Weifeng Lv. 2023. Towards better dynamic graph
+learning: New architecture and unified library. Advances in Neural Information
+Processing Systems 36 (2023), 67686–67700.
+[28] Yanping Zheng, Hanzhi Wang, Zhewei Wei, Jiajun Liu, and Sibo Wang. 2022.
+Instant graph neural networks for dynamic graphs. In Proceedings of the 28th
+ACM SIGKDD conference on knowledge discovery and data mining . 2605–2615.
+1391
+
+<!-- page 8 -->
+
+SC Workshops ’25, November 16–21, 2025, St Louis, MO, USA Trovato et al.
+Appendix: Artifact Description/Artifact Evaluation
+Artifact Description (AD)
+A Overview of Contributions and Artifacts
+A.1 Paper’s Main Contributions
+C1 An application-level approach calls MPI_Allgather to ob-
+tain all metadata on all processes in order to generate a con-
+sistent copy before calling the library’s data object creation
+APIs.
+C2 A library-level approach that allows independent creation of
+unique data objects and checks the consistency of metadata
+inside the I/O library.
+C3 A new file header format that enables multiple MPI pro-
+cesses to create data objects independently and write meta-
+data to the file header in parallel.
+A.2 Computational Artifacts
+A1 https://doi.org/10.5281/zenodo.17089784
+Also available at:
+https://github.com/NU-CUCIS/PnetCDF_PDSW_2025.git
+Artifact ID Contributions Related
+Supported Paper Elements
+𝐴1 𝐶1,𝐶 2,𝐶 3 Tables 1 - 2
+Figure 3 - 5
+B Artifact Identification
+B.1 Computational Artifact 𝐴1
+Relation To Contributions
+This artifact repository accompanies our
