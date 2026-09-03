@@ -12,6 +12,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **LLM extraction now streams the Chat Completions request**
+  (`ref_checker/extract.py`'s `_call_llm`): Argo rejects long-running
+  non-streaming requests with HTTP 500 ("Streaming is required for
+  operations that may take longer than 10 minutes"), regardless of prompt
+  size or actual output length — every extraction against a Claude model
+  served through Argo failed identically, wiping out the refs cache.
+  `_call_llm` now requests `stream=True` and reassembles the streamed
+  delta chunks into the same JSON string a non-streaming call would have
+  returned.
+
+- **LLM extraction now recovers from markdown-fenced or prose-prefixed
+  JSON output**: despite requesting `response_format={"type":
+  "json_object"}`, some models served through Argo (observed with GPT-4o,
+  GPT-4.1, and Claude Sonnet 4.6) ignore the request and wrap their JSON
+  response in a ` ```json ` code fence, or occasionally prefix it with
+  prose. `_call_llm` previously called `json.loads()` directly and failed
+  outright on either. It now strips a leading/trailing code fence and,
+  failing that, recovers the first balanced `{...}` object from the
+  response before parsing.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

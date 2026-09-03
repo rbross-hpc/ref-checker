@@ -11,7 +11,7 @@ and reuse across many test runs. Do not regenerate on every test run.
 
 `tests/test_call_llm_live.py` re-downloads the `zfp_spectral` and
 `dorier_mofka` source PDFs (see Provenance below for URLs) and runs them
-through `extract._call_llm` against a real LLM endpoint, checking the
+through the LLM extraction path against a real LLM endpoint, checking the
 result against the golden fixtures in `refs/`. These tests:
 
 - Are skipped unless both `OPENAI_API_KEY` and `OPENAI_BASE_URL` are set
@@ -20,7 +20,9 @@ result against the golden fixtures in `refs/`. These tests:
   Argo-shaped failure modes).
 - Cache the downloaded PDFs under
   `/tmp/opencode/ref-checker-live-fixtures/<osti_id>.pdf` — not committed
-  to the repo.
+  to the repo. Cached files are verified against a pinned sha256 on every
+  reuse; a mismatch (corrupted cache or a changed upstream file) triggers
+  a re-fetch rather than extracting from bad bytes.
 - Compare reference count exactly, and `doi`/`arxiv_id`/`github_url`
   per-index (these are backfilled deterministically by
   `extract._backfill_identifiers`, not LLM-generated, so they're stable
@@ -28,6 +30,16 @@ result against the golden fixtures in `refs/`. These tests:
   LLM's exact phrasing isn't guaranteed stable.
 - Require `OPENAI_MODEL` to be set to a model your endpoint actually
   serves — Argo does not recognize the package default (`gpt-4o-mini`).
+
+Two tests (`test_live_small_paper_extracts_all_references`,
+`test_live_big_paper_extracts_all_references_via_streaming`) call
+`extract._call_llm` directly, isolating the streaming/JSON-parsing fix
+from `extract_references()`'s 3-attempt retry loop (which could mask an
+intermittent regression as a pass). A third test
+(`test_live_extract_references_end_to_end`) drives the actual public
+`extract_references()` entry point — the same one the CLI's `extract` and
+`check` commands use — with `max_retries=1`, so a failure there means the
+first real attempt failed outright, not that retries ran out.
 
 ## Provenance
 
