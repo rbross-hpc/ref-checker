@@ -282,6 +282,28 @@ class TestNarrowingNotes:
         assert "'Supplementary'" in err
         assert "did not treat them as the end" in err
 
+    def test_note_lists_three_rejected_candidates_with_serial_and(self, capsys):
+        """Grammar sanity: 3+ items should render as 'A', 'B' and 'C' (no
+        trailing 'and' before B). Covers _format_heading_list's 3+ branch,
+        which the 2-item test above doesn't exercise."""
+        text = (
+            "References\n"
+            "Smith, J. (2020).\n"
+            "Acknowledgments\n"
+            "Prose.\n"
+            "Jones, A. (2021).\n"
+            "Supplementary\n"
+            "More prose.\n"
+            "Brown, C. (2022).\n"
+            "About the Authors\n"
+            "Bio prose.\n"
+            "Adams, D. (2023).\n"
+        )
+        _trim_post_references(text)
+        err = capsys.readouterr().err
+        assert "'Acknowledgments', 'Supplementary' and 'About the Authors'" in err
+        assert "did not treat them as the end" in err
+
 
 # --- Real-paper regression fixtures -------------------------------------
 
