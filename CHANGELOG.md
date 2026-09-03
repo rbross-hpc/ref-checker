@@ -46,9 +46,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   after a `<!-- page N -->` marker), which is the case for a genuine
   post-references section but not for this PDF-extraction artifact; a
   match that doesn't qualify is skipped in favor of a later one, or the
-  text is returned untrimmed if none qualifies. Also now warns on stderr
-  when a trim discards more than half of the references section, so a
-  future variant of this failure is visible rather than silent.
+  text is returned untrimmed if none qualifies. Also prints an
+  informational note to stderr in the two cases where the decision isn't
+  obvious enough to stay silent: a heading is used to trim only after an
+  earlier one was skipped, or a heading is found but none qualifies (the
+  shape of this bug — a human can confirm the kept text is really all
+  references). See the new "Fallback: hand-edit the reference list"
+  section in README.md for what to do if a note looks wrong.
 
 ## [0.3.0] - 2026-08-17
 

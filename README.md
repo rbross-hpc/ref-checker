@@ -200,6 +200,34 @@ ref-checker extract paper.pdf
 ref-checker extract paper.pdf --out-dir ./refs
 ```
 
+#### Fallback: hand-edit the reference list
+
+Extraction narrows a PDF down to its references section using heuristics
+(a `References`/`Bibliography` heading, then trimming any trailing
+Appendix/Acknowledgments/Supplementary section). Occasionally you may see a
+note on stderr like:
+
+```
+[ref-checker] Note: interpreted 'Appendix' as the end of the references.
+[ref-checker] Note: found 'Acknowledgments' after the References heading but did not treat it as the end.
+```
+
+These are informational, not errors — extraction usually gets it right even
+when a note appears. But if the resulting `<stem>.refs.json` looks wrong
+(too few or too many entries), the fix is straightforward: open
+`<stem>.refs.md` or `<stem>.refs.json`, correct the reference list by hand
+(add missing entries, delete stray ones), and pass the corrected file
+directly to `--refs-json`:
+
+```bash
+ref-checker extract paper.pdf     # produces paper.refs.json — inspect it
+# ... hand-edit paper.refs.json if needed ...
+ref-checker check --refs-json paper.refs.json
+```
+
+No PDF or `OPENAI_API_KEY` is needed for this path — see
+[Check references from a JSON list](#check-references-from-a-json-list) above.
+
 ### Re-emit results from a saved sidecar
 
 After a `check` run (interrupted or not), the sidecar contains everything
