@@ -392,9 +392,21 @@ def _call_llm(text: str) -> list[Reference]:
             {"role": "user", "content": _USER_PROMPT_TEMPLATE.format(text=text)},
         ],
         timeout=120,
+        stream=True,
     )
 
-    raw_json = response.choices[0].message.content or ""
+    # Argo rejects long-running non-streaming Chat Completions requests
+    # (HTTP 500, or a "streaming required for operations that may take
+    # longer than 10 minutes" error) once the request runs long enough,
+    # regardless of prompt size or actual output length. Streaming keeps
+    # the connection alive for the duration of generation, so we request
+    # and consume a stream, then reassemble it into the same JSON string
+    # a non-streaming call would have returned.
+    raw_json = "".join(
+        chunk.choices[0].delta.content or ""
+        for chunk in response
+        if chunk.choices and chunk.choices[0].delta.content
+    )
     data = json.loads(raw_json)
 
     if "references" not in data or not isinstance(data["references"], list):
