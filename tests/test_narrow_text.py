@@ -16,7 +16,9 @@ new page (falls within _PAGE_PROXIMITY_LOOKBACK characters after a
 <!-- page N --> marker -- see _match_starts_new_page). A genuine
 post-references section essentially always starts a page; a mid-list
 boilerplate artifact does not. If no candidate qualifies, the text is
-returned untrimmed rather than guessing wrong.
+returned untrimmed rather than guessing wrong. An informational note is
+printed to stderr in the two cases where this isn't obvious enough to stay
+silent -- see TestNarrowingNotes below.
 
 Two real papers anchor this test file (see tests/fixtures/README.md for
 full provenance):
@@ -212,6 +214,75 @@ class TestMatchStartsNewPage:
         assert _match_starts_new_page(5, page_markers) is False
 
 
+# --- Informational notes on stderr --------------------------------------
+
+
+class TestNarrowingNotes:
+    """_trim_post_references prints an informational note to stderr in the
+    two cases where the trim decision isn't obvious enough to stay silent:
+    a heading is trimmed at only after an earlier heading was skipped
+    (non-trivial disambiguation happened), or a heading is found but none
+    qualifies (the shape of the bug this function used to have -- the text
+    is kept whole rather than silently truncated). Silent in the common
+    cases: no candidate headings, or the first one is accepted outright.
+
+    If either note looks wrong for a given paper, the fallback is to copy
+    the reference list into a JSON file and use `check --refs-json`
+    (see README.md)."""
+
+    def test_no_note_when_no_candidate_headings(self, capsys):
+        text = "References\nSmith, J. (2020). A paper.\nJones, A. (2021). Another.\n"
+        _trim_post_references(text)
+        assert capsys.readouterr().err == ""
+
+    def test_no_note_when_first_candidate_accepted(self, capsys):
+        text = (
+            "References\n"
+            "Smith, J. (2020). A paper. Journal, 1, 1-10.\n"
+            "<!-- page 5 -->\nAppendix A: Extra material.\n"
+        )
+        _trim_post_references(text)
+        assert capsys.readouterr().err == ""
+
+    def test_note_fires_when_earlier_candidate_skipped_before_trim(self, capsys):
+        text = (
+            "References\n"
+            "Smith, J. (2020). A paper.\n"
+            "Acknowledgments\n"  # skipped: no preceding page marker
+            "Funding statement prose.\n"
+            "Jones, A. (2021).\n"
+            "<!-- page 9 -->\n\n"
+            "Appendix B: Supplementary tables.\n"  # accepted
+        )
+        _trim_post_references(text)
+        err = capsys.readouterr().err
+        assert "interpreted 'Appendix" in err
+        assert "end of the references" in err
+
+    def test_note_fires_when_all_candidates_rejected(self, capsys):
+        _trim_post_references(_ZHANG_STYLE_FALSE_POSITIVE)
+        err = capsys.readouterr().err
+        assert "found 'Acknowledgments'" in err
+        assert "did not treat it as the end" in err
+
+    def test_note_lists_multiple_rejected_candidates(self, capsys):
+        text = (
+            "References\n"
+            "Smith, J. (2020).\n"
+            "Acknowledgments\n"
+            "Prose.\n"
+            "Jones, A. (2021).\n"
+            "Supplementary\n"
+            "More prose.\n"
+            "Brown, C. (2022).\n"
+        )
+        _trim_post_references(text)
+        err = capsys.readouterr().err
+        assert "'Acknowledgments'" in err
+        assert "'Supplementary'" in err
+        assert "did not treat them as the end" in err
+
+
 # --- Real-paper regression fixtures -------------------------------------
 
 
@@ -235,3 +306,10 @@ class TestRealPaperFixtures:
         out = _trim_post_references(text)
         assert "Zheng" in out  # last reference entry before the page break
         assert "hdfgroup.org" in out
+
+    def test_li_2025_trim_site_emits_no_note(self, capsys):
+        """li_2025's Appendix is the first candidate and starts a new page,
+        so this is the common case -- no note should fire."""
+        text = self._load("li_2025_trim_site.txt")
+        _trim_post_references(text)
+        assert capsys.readouterr().err == ""

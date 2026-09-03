@@ -30,10 +30,6 @@ _URL_RE_PROTECT = re.compile(r"https?://\S+", re.IGNORECASE)
 # page marker to count as "starting a new page" -- see _trim_post_references.
 _PAGE_PROXIMITY_LOOKBACK = 200
 
-# If a trim discards more than this fraction of the references section,
-# warn on stderr -- see _trim_post_references.
-_LARGE_TRIM_WARNING_THRESHOLD = 0.5
-
 _DOI_RE = re.compile(
     r"(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
     re.IGNORECASE,
@@ -356,6 +352,15 @@ def _match_starts_new_page(match_start: int, page_markers: list[re.Match]) -> bo
     return match_start - preceding.end() <= _PAGE_PROXIMITY_LOOKBACK
 
 
+def _format_heading_list(matches: list[re.Match]) -> str:
+    """Render matched heading text as a human list: 'A', 'A' and 'B', or
+    'A', 'B' and 'C'."""
+    names = [f"{m.group(0).strip()!r}" for m in matches]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
 def _trim_post_references(text: str) -> str:
     """Truncate at the first section that genuinely follows the references
     (appendix, acknowledgements, etc.), skipping any _END_SECTION_RE match
@@ -363,22 +368,36 @@ def _trim_post_references(text: str) -> str:
     signal distinguishes a real post-references section from a PDF-extraction
     artifact that interleaves page-trailing boilerplate into the middle of
     the reference list. Returns *text* unchanged if no match qualifies.
+
+    Prints an informational note to stderr in the two cases where the
+    decision isn't obvious enough to stay silent: a heading is used to trim
+    only after an earlier heading was skipped (non-trivial disambiguation
+    happened -- worth a look), or a heading is found but none qualifies (the
+    text is kept whole, which is the shape of the bug this function used to
+    have). Silent in the common cases: no candidate headings, or the first
+    one is accepted outright.
     """
     page_markers = list(_PAGE_MARKER_RE.finditer(text))
+    skipped: list[re.Match] = []
 
     for match in _END_SECTION_RE.finditer(text):
         if _match_starts_new_page(match.start(), page_markers):
-            trimmed = text[:match.start()]
-            discarded_fraction = 1 - (len(trimmed) / len(text)) if text else 0
-            if discarded_fraction > _LARGE_TRIM_WARNING_THRESHOLD:
+            if skipped:
                 print(
-                    f"[ref-checker] Warning: narrowing discarded "
-                    f"{discarded_fraction:.0%} of the references section at "
-                    f"{match.group(0).strip()!r} -- if this looks wrong, "
-                    f"references may have been lost.",
+                    f"[ref-checker] Note: interpreted {match.group(0).strip()!r} "
+                    f"as the end of the references.",
                     file=sys.stderr,
                 )
-            return trimmed
+            return text[:match.start()]
+        skipped.append(match)
+
+    if skipped:
+        print(
+            f"[ref-checker] Note: found {_format_heading_list(skipped)} after "
+            f"the References heading but did not treat "
+            f"{'it' if len(skipped) == 1 else 'them'} as the end.",
+            file=sys.stderr,
+        )
 
     return text
 
