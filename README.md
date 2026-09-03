@@ -214,10 +214,13 @@ note on stderr like:
 
 These are informational, not errors — extraction usually gets it right even
 when a note appears. But if the resulting `<stem>.refs.json` looks wrong
-(too few or too many entries), the fix is straightforward: open
-`<stem>.refs.md` or `<stem>.refs.json`, correct the reference list by hand
-(add missing entries, delete stray ones), and pass the corrected file
-directly to `--refs-json`:
+(too few or too many entries), the fix is straightforward. Inspect
+`<stem>.refs.md` to see what was extracted (it's a numbered list of the raw
+reference text, easier to skim than the JSON). Then hand-edit
+`<stem>.refs.json` — add missing entries, delete stray ones (see
+[the reference schema](ref_checker/skills/reference-checking/references/schema.md)
+for the JSON field format) — and pass the corrected file directly to
+`--refs-json`:
 
 ```bash
 ref-checker extract paper.pdf     # produces paper.refs.json — inspect it
