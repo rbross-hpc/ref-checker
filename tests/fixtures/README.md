@@ -31,6 +31,43 @@ result against the golden fixtures in `refs/`. These tests:
 - Require `OPENAI_MODEL` to be set to a model your endpoint actually
   serves — Argo does not recognize the package default (`gpt-4o-mini`).
 
+## `pdf_text/` — extracted-text slices for narrowing tests
+
+Small (~2.5 KB) excerpts of `pdf.convert()` output, used by
+`tests/test_narrow_text.py` to regression-test `extract._trim_post_references`
+/ `extract._narrow_text` against real PDF-extraction artifacts, without
+committing full PDFs or their full extracted text.
+
+### `pdf_text/li_2025_trim_site.txt`
+
+- **Title:** Parallel Data Object Creation: Scalable Metadata Management in
+  Parallel I/O Library
+- **Authors:** Kai-Yuan Hou, Wei-keng Liao, Kai Li, et al. (Northwestern
+  University)
+- **Venue:** Proceedings of the SC '25 Workshops of the International
+  Conference for High Performance Computing, Networking, Storage and
+  Analysis
+- **DOI:** [10.1145/3731599.3767512](https://doi.org/10.1145/3731599.3767512)
+- **OpenAlex ID:** W4416004292
+- **License:** CC-BY (published version, per OpenAlex)
+
+A 2,500-character excerpt (`ref_checker.extract._narrow_text`'s narrowed
+text, offsets 5000:7500 of the references section) spanning the tail of the
+reference list, the page break into a new page, and the start of a genuine
+trailing `Appendix: Artifact Description/Artifact Evaluation` section. This
+is the real-world **positive** case for `_trim_post_references`'s
+page-marker-proximity check: the `Appendix` heading here genuinely starts a
+new page (`<!-- page 8 -->` precedes it by 75 characters — a running
+header), so it must still be trimmed. Used as a regression guard against
+over-correcting the mid-list false-positive bug (see `CHANGELOG.md`): the
+fix must keep trimming *this* case while no longer trimming a false
+mid-page match.
+
+`dl.acm.org` is behind Cloudflare bot-detection and could not be fetched
+programmatically for a live test; this fixture was generated once from a
+locally-downloaded copy of the PDF via `ref_checker.pdf.convert()` and
+committed as plain text (not the PDF itself).
+
 Two tests (`test_live_small_paper_extracts_all_references`,
 `test_live_big_paper_extracts_all_references_via_streaming`) call
 `extract._call_llm` directly, isolating the streaming/JSON-parsing fix
