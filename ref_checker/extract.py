@@ -374,6 +374,82 @@ def _backfill_identifiers(refs: list[Reference]) -> None:
                 ref.url = " ".join(cleaned)
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """Strip a leading/trailing ``` or ```json code fence some models wrap
+    JSON output in despite response_format={"type": "json_object"} or
+    explicit prompt instructions not to (observed live against Argo with
+    both GPT-4.1/4o and Claude models)."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        start = 1
+        end = len(lines)
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].strip() == "```":
+                end = i
+                break
+        text = "\n".join(lines[start:end]).strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
+    return text
+
+
+def _extract_json_object(text: str) -> str:
+    """Best-effort recovery when a model prefixes its JSON response with
+    prose (despite instructions not to). Finds the first '{' and its
+    matching closing '}' (brace-depth counting, string-aware so braces
+    inside quoted strings don't confuse it) and returns just that span.
+    Returns *text* unchanged if no balanced object is found, so the
+    caller's json.loads still raises a clear error rather than silently
+    returning something wrong.
+    """
+    start = text.find("{")
+    if start == -1:
+        return text
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return text
+
+
+def _parse_llm_json(raw: str) -> dict:
+    """Parse *raw* as JSON, recovering from a markdown code fence and/or
+    prefixed prose that some models emit despite response_format=json_object
+    (or explicit prompt instructions). Raises ValueError with the raw
+    response (truncated) if no recovery succeeds.
+    """
+    stripped = _strip_markdown_fence(raw)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(_extract_json_object(stripped))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"LLM response was not valid JSON, even after markdown-fence and "
+            f"prefixed-prose recovery: {exc}. Raw response (truncated): {raw[:200]!r}"
+        ) from exc
+
+
 def _call_llm(text: str) -> list[Reference]:
     """Send *text* to the LLM and return parsed references. Raises on failure."""
     from openai import OpenAI
@@ -407,7 +483,7 @@ def _call_llm(text: str) -> list[Reference]:
         for chunk in response
         if chunk.choices and chunk.choices[0].delta.content
     )
-    data = json.loads(raw_json)
+    data = _parse_llm_json(raw_json)
 
     if "references" not in data or not isinstance(data["references"], list):
         raise ValueError(f"LLM response missing 'references' list: {raw_json[:200]}")

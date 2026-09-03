@@ -34,6 +34,7 @@ ref_checker = ["skills/reference-checking/**/*"]
 [tool.pytest.ini_options]
 markers = [
     "primo_live: marks tests that require PRIMO_BASE_URL/VID/INST to be set",
+    "llm_live: marks tests that require OPENAI_API_KEY/OPENAI_BASE_URL to be set (hits a real Argo-backed LLM endpoint)",
 ]
 
 [tool.ruff]

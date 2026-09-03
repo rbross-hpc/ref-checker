@@ -15,7 +15,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ref_checker.extract import Reference, _call_llm
+from ref_checker.extract import (
+    Reference,
+    _call_llm,
+    _extract_json_object,
+    _parse_llm_json,
+    _strip_markdown_fence,
+)
 
 
 def _make_chunk(content: str | None):
@@ -87,3 +93,81 @@ def test_call_llm_raises_on_missing_references_key():
     with patch("openai.OpenAI", return_value=mock_client):
         with pytest.raises(ValueError, match="missing 'references' list"):
             _call_llm("some narrowed reference text")
+
+
+def test_call_llm_recovers_from_markdown_fenced_json():
+    """Regression test: observed live against Argo with GPT-4.1/4o and
+    Claude models -- despite response_format={"type": "json_object"},
+    some models wrap their JSON output in a ```json ... ``` fence.
+    _call_llm must recover the JSON rather than failing outright."""
+    raw_json = '{"references": [{"index": 1, "raw": "Smith, J. (2020)."}]}'
+    fenced = f"```json\n{raw_json}\n```"
+    chunks = [_make_chunk(fenced)]
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = iter(chunks)
+
+    with patch("openai.OpenAI", return_value=mock_client):
+        refs = _call_llm("some narrowed reference text")
+
+    assert len(refs) == 1
+    assert refs[0].index == 1
+
+
+# --- _strip_markdown_fence ---------------------------------------------
+
+
+def test_strip_markdown_fence_removes_json_fence():
+    text = '```json\n{"a": 1}\n```'
+    assert _strip_markdown_fence(text) == '{"a": 1}'
+
+
+def test_strip_markdown_fence_removes_bare_fence():
+    text = '```\n{"a": 1}\n```'
+    assert _strip_markdown_fence(text) == '{"a": 1}'
+
+
+def test_strip_markdown_fence_noop_without_fence():
+    text = '{"a": 1}'
+    assert _strip_markdown_fence(text) == text
+
+
+# --- _extract_json_object -----------------------------------------------
+
+
+def test_extract_json_object_finds_balanced_object():
+    raw = 'Some preamble text.\n\n{"a": 1, "b": {"c": 2}}'
+    extracted = _extract_json_object(raw)
+    assert extracted == '{"a": 1, "b": {"c": 2}}'
+
+
+def test_extract_json_object_handles_braces_in_strings():
+    raw = 'Preamble {"text": "a sentence with a { brace } inside it", "n": 1}'
+    extracted = _extract_json_object(raw)
+    assert extracted == '{"text": "a sentence with a { brace } inside it", "n": 1}'
+
+
+def test_extract_json_object_no_object_returns_unchanged():
+    raw = "no json here at all"
+    assert _extract_json_object(raw) == raw
+
+
+# --- _parse_llm_json ------------------------------------------------------
+
+
+def test_parse_llm_json_handles_clean_json():
+    assert _parse_llm_json('{"a": 1}') == {"a": 1}
+
+
+def test_parse_llm_json_recovers_fenced_json():
+    assert _parse_llm_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_parse_llm_json_recovers_prefixed_prose():
+    raw = 'Here is the JSON you requested:\n\n{"a": 1}'
+    assert _parse_llm_json(raw) == {"a": 1}
+
+
+def test_parse_llm_json_raises_value_error_on_unparseable_response():
+    with pytest.raises(ValueError, match="not valid JSON"):
+        _parse_llm_json("not json at all")
