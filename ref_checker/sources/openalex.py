@@ -8,7 +8,7 @@ from typing import Any
 
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "openalex"
@@ -28,10 +28,7 @@ def build_context() -> SourceContext:
     """
     global _WARNED_MAILTO
     mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
-    if mailto:
-        user_agent = f"ref-checker/0.1 (mailto:{mailto})"
-    else:
-        user_agent = "ref-checker/0.1"
+    if not mailto:
         if not _WARNED_MAILTO:
             warnings.warn(
                 "[ref-checker] OPENALEX_MAILTO is not set. "
@@ -41,7 +38,7 @@ def build_context() -> SourceContext:
             )
             _WARNED_MAILTO = True
     params = {"mailto": mailto} if mailto else None
-    session = build_session(user_agent, params=params)
+    session = build_session(user_agent(mailto or None), params=params)
     return SourceContext(session=session)
 
 

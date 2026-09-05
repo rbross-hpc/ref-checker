@@ -38,8 +38,8 @@ itself become a thing.
 
 ### Typed `Candidate` for `best_summary`/`SourceOutcome.summary`
 
-`LookupResult.per_source` is now `dict[str, SourceOutcome]` (done — see
-`CHANGELOG.md`), but `SourceOutcome.summary` and `LookupResult.best_summary`
+`LookupResult.per_source` is now `dict[str, SourceOutcome]`, but
+`SourceOutcome.summary` and `LookupResult.best_summary`
 are still untyped `dict | None`: the provider-summary shape produced by
 every source adapter (`title`, `authors`, `year`, `venue`, `doi`, `url`,
 `external_id`, `source`). Introducing a typed `Candidate` dataclass for

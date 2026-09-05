@@ -1,10 +1,10 @@
 [build-system]
-requires      = ["setuptools>=68", "wheel"]
+requires      = ["setuptools>=68", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name            = "ref-checker"
-version         = "0.4.0.dev0"
+dynamic         = ["version"]
 description     = "Verify bibliographic references against OpenAlex, CrossRef, OSTI, DBLP, Semantic Scholar, and arXiv (optionally Ex Libris Primo)."
 readme          = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,9 @@ include = ["ref_checker*"]
 
 [tool.setuptools.package-data]
 ref_checker = ["skills/reference-checking/**/*"]
+
+[tool.setuptools_scm]
+write_to = "ref_checker/_version.py"
 
 [tool.pytest.ini_options]
 markers = [

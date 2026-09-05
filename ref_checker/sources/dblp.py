@@ -9,7 +9,7 @@ import requests
 from ..errors import RateLimited
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, parse_retry_after, raise_for_rate_limit
+from ._http import build_session, parse_retry_after, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "dblp"
@@ -20,12 +20,9 @@ _BASES = [
     "https://dblp.org/search/publ/api",
     "https://dblp.uni-trier.de/search/publ/api",
 ]
-_USER_AGENT = "ref-checker/0.1"
-
-
 def build_context() -> SourceContext:
     """Build the DBLP :class:`SourceContext` once per run. User-Agent only."""
-    return SourceContext(session=build_session(_USER_AGENT))
+    return SourceContext(session=build_session(user_agent()))
 
 
 def _normalize_authors(authors_field: Any) -> list[str]:

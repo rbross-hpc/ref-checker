@@ -7,7 +7,7 @@ from typing import Any
 
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "crossref"
@@ -23,9 +23,8 @@ def build_context() -> SourceContext:
     Shares ``OPENALEX_MAILTO`` with OpenAlex — same polite-pool convention.
     """
     mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
-    user_agent = f"ref-checker/0.1 (mailto:{mailto})" if mailto else "ref-checker/0.1"
     params = {"mailto": mailto} if mailto else None
-    session = build_session(user_agent, params=params)
+    session = build_session(user_agent(mailto or None), params=params)
     return SourceContext(session=session)
 
 

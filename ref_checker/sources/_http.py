@@ -7,7 +7,14 @@ from typing import Any
 
 import requests
 
+from .. import __version__
 from ..errors import RateLimited
+
+
+def user_agent(mailto: str | None = None) -> str:
+    """Build a versioned User-Agent without setuptools-scm's local segment."""
+    version = __version__.split("+", 1)[0]
+    return f"ref-checker/{version} (mailto:{mailto})" if mailto else f"ref-checker/{version}"
 
 
 def build_session(
