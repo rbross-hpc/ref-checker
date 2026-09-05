@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **`OPENAI_API_MODEL` is now accepted as a fallback for `OPENAI_MODEL`**
+  (`ref_checker/extract.py`'s new `resolve_model()`, used by `_call_llm`
+  and by both places `cli/main.py` records the model into refs-cache
+  metadata): `OPENAI_MODEL` remains the canonical name (used across the
+  wider ecosystem — puba, ref-scout, and most LangChain/LiteLLM-based
+  tools), but some environments (notably this project's `docker-setups`
+  `.env`) set `OPENAI_API_MODEL` instead, by analogy with
+  `OPENAI_API_KEY`/`OPENAI_API_BASE`. `OPENAI_MODEL` wins if both are set.
+
+- **Default LLM model changed from `gpt-4o-mini` to `GPT-5.4`**
+  (`ref_checker/extract.py`'s `_DEFAULT_MODEL`, used by `resolve_model()`
+  when neither `OPENAI_MODEL` nor `OPENAI_API_MODEL` is set): Argo does
+  not serve `gpt-4o-mini`, so the previous default only ever worked
+  against `api.openai.com` directly; `GPT-5.4` is served by Argo and is
+  what this project's own environments already override to.
+
 ### Fixed
 
 - **LLM extraction now streams the Chat Completions request**

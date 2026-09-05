@@ -53,7 +53,8 @@ Set these before running:
 | --- | --- | --- |
 | `OPENAI_API_KEY` | **Yes, for PDF input** | Key for the LLM used to extract references from a PDF. Not needed when using `--refs-json`. |
 | `OPENAI_BASE_URL` | No | Override the OpenAI-compatible base URL (e.g. for a local proxy) |
-| `OPENAI_MODEL` | No | Model name to use (default: `gpt-4o-mini`) |
+| `OPENAI_MODEL` | No | Model name to use (default: `GPT-5.4`) |
+| `OPENAI_API_MODEL` | No | Fallback for `OPENAI_MODEL` if that's unset (matches the `OPENAI_API_KEY`/`OPENAI_API_BASE` naming some environments use) |
 | `OPENALEX_MAILTO` | Recommended | Your email — enables the OpenAlex/CrossRef polite pool for faster, more reliable API access |
 | `SEMANTICSCHOLAR_API_KEY` | Recommended | Semantic Scholar API key — without one, unauthenticated requests are aggressively rate-limited. Register free at semanticscholar.org/product/api |
 

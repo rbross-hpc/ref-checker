@@ -21,6 +21,7 @@ from ref_checker.extract import (
     _extract_json_object,
     _parse_llm_json,
     _strip_markdown_fence,
+    resolve_model,
 )
 
 
@@ -42,6 +43,7 @@ def _openai_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_MODEL", raising=False)
 
 
 def test_call_llm_requests_streaming_and_reassembles_chunks():
@@ -112,6 +114,29 @@ def test_call_llm_recovers_from_markdown_fenced_json():
 
     assert len(refs) == 1
     assert refs[0].index == 1
+
+
+# --- resolve_model ---------------------------------------------------------
+
+
+def test_resolve_model_defaults_when_neither_env_var_set():
+    assert resolve_model() == "GPT-5.4"
+
+
+def test_resolve_model_uses_openai_model_when_set(monkeypatch):
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
+    assert resolve_model() == "gpt-4.1"
+
+
+def test_resolve_model_falls_back_to_openai_api_model(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_MODEL", "GPT-5.4")
+    assert resolve_model() == "GPT-5.4"
+
+
+def test_resolve_model_prefers_openai_model_over_openai_api_model(monkeypatch):
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
+    monkeypatch.setenv("OPENAI_API_MODEL", "GPT-5.4")
+    assert resolve_model() == "gpt-4.1"
 
 
 # --- _strip_markdown_fence ---------------------------------------------
