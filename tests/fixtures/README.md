@@ -28,8 +28,9 @@ result against the golden fixtures in `refs/`. These tests:
   `extract._backfill_identifiers`, not LLM-generated, so they're stable
   across models/runs). Title/author/venue text is not asserted, since the
   LLM's exact phrasing isn't guaranteed stable.
-- Require `OPENAI_MODEL` to be set to a model your endpoint actually
-  serves — Argo does not recognize the package default (`gpt-4o-mini`).
+- Default to `GPT-5.4` (the package default, recognized by Argo); set
+  `OPENAI_MODEL` (or `OPENAI_API_MODEL` as a fallback) to override with a
+  different model your endpoint serves.
 
 ## `pdf_text/` — extracted-text slices for narrowing tests
 

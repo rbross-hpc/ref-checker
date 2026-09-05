@@ -522,6 +522,24 @@ def _parse_llm_json(raw: str) -> dict:
         ) from exc
 
 
+_DEFAULT_MODEL = "GPT-5.4"
+
+
+def resolve_model() -> str:
+    """Return the LLM model name to use.
+
+    Checks ``OPENAI_MODEL`` first (the documented, canonical name used
+    across the wider ecosystem), then falls back to ``OPENAI_API_MODEL``
+    (matching the ``OPENAI_API_KEY``/``OPENAI_API_BASE`` naming some
+    environments use), then a hard-coded default.
+    """
+    return (
+        os.environ.get("OPENAI_MODEL")
+        or os.environ.get("OPENAI_API_MODEL")
+        or _DEFAULT_MODEL
+    )
+
+
 def _call_llm(text: str) -> list[Reference]:
     """Send *text* to the LLM and return parsed references. Raises on failure."""
     from openai import OpenAI
@@ -530,7 +548,7 @@ def _call_llm(text: str) -> list[Reference]:
         api_key=os.environ["OPENAI_API_KEY"],
         base_url=os.environ.get("OPENAI_BASE_URL") or None,
     )
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    model = resolve_model()
 
     response = client.chat.completions.create(
         model=model,

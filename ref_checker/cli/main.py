@@ -186,7 +186,8 @@ def _log_credentials() -> None:
     items = [
         ("OPENAI_API_KEY",            "LLM extraction (required for extract/check)"),
         ("OPENAI_BASE_URL",           "LLM base URL override"),
-        ("OPENAI_MODEL",              "LLM model override (default: gpt-4o-mini)"),
+        ("OPENAI_MODEL",              "LLM model override (default: GPT-5.4)"),
+        ("OPENAI_API_MODEL",          "Fallback for OPENAI_MODEL if unset"),
         ("OPENALEX_MAILTO",           "OpenAlex/CrossRef polite pool (recommended)"),
         ("SEMANTICSCHOLAR_API_KEY",   "Semantic Scholar authenticated tier"),
         ("PRIMO_BASE_URL",            "Ex Libris Primo base URL (optional, enables Primo source)"),
@@ -297,7 +298,7 @@ def run_check(args) -> None:
             refs = _load_pdf_and_extract(pdf_path, args.tail_pages)
             if refs and not args.no_refs_cache:
                 extractor_meta = {
-                    "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                    "model": extract.resolve_model(),
                     "tail_pages": args.tail_pages,
                 }
                 extract.write_refs_cache(refs_cache_path, pdf_path, refs, extractor_meta)
@@ -376,7 +377,7 @@ def run_extract(args) -> None:
     print(f"[ref-checker] Written: {md_path}", file=sys.stderr)
 
     extractor_meta = {
-        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "model": extract.resolve_model(),
         "tail_pages": args.tail_pages,
     }
     extract.write_refs_cache(json_path, pdf_path, refs, extractor_meta)

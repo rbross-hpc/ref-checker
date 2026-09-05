@@ -48,7 +48,8 @@ Verify: `ref-checker --help`
 |---|---|---|
 | `OPENAI_API_KEY` | **Yes, for PDF input only** | Key for the LLM used to extract references from a PDF. Not needed when using `--refs-json`. |
 | `OPENAI_BASE_URL` | No | Override base URL (e.g. local proxy) |
-| `OPENAI_MODEL` | No | Model name (default: `gpt-4o-mini`) |
+| `OPENAI_MODEL` | No | Model name (default: `GPT-5.4`) |
+| `OPENAI_API_MODEL` | No | Fallback for `OPENAI_MODEL` if that's unset |
 | `OPENALEX_MAILTO` | Recommended | Your email — enables the polite pool for OpenAlex/CrossRef |
 | `SEMANTICSCHOLAR_API_KEY` | Recommended | Without one, Semantic Scholar rate-limits aggressively |
 | `PRIMO_BASE_URL` | No | Institutional Primo host — enables Primo source when set with VID+INST |
