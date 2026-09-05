@@ -11,13 +11,20 @@ import pytest
 
 from ref_checker.errors import RateLimited
 from ref_checker.sources import arxiv, crossref, dblp, openalex, osti, semanticscholar
-from ref_checker.sources._http import parse_retry_after, raise_for_rate_limit
+from ref_checker.sources._http import parse_retry_after, raise_for_rate_limit, user_agent
 from ref_checker.sources.base import SourceContext
 
 
 # --------------------------------------------------------------------------
 # Fake plumbing
 # --------------------------------------------------------------------------
+
+
+def test_user_agent_includes_version_and_optional_mailto(monkeypatch):
+    monkeypatch.setattr("ref_checker.sources._http.__version__", "0.5.1.dev1+gabc123")
+
+    assert user_agent() == "ref-checker/0.5.1.dev1"
+    assert user_agent("test@example.com") == "ref-checker/0.5.1.dev1 (mailto:test@example.com)"
 
 
 class _FakeResponse:

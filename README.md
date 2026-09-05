@@ -29,7 +29,7 @@ pipx upgrade ref-checker
 To install a specific tagged version or commit:
 
 ```bash
-pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.3.0
+pipx install git+https://github.com/rbross-hpc/ref-checker.git@v0.5.0
 ```
 
 ### Other install methods

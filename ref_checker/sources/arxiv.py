@@ -7,7 +7,7 @@ from typing import Any
 
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "arxiv"
@@ -16,12 +16,9 @@ SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.
 
 _BASE = "https://export.arxiv.org/api/query"
 _NS = {"atom": "http://www.w3.org/2005/Atom"}
-_USER_AGENT = "ref-checker/0.1"
-
-
 def build_context() -> SourceContext:
     """Build the arXiv :class:`SourceContext` once per run. User-Agent only."""
-    return SourceContext(session=build_session(_USER_AGENT))
+    return SourceContext(session=build_session(user_agent()))
 
 
 def _parse_entry(entry: ET.Element) -> dict[str, Any]:

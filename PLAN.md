@@ -17,8 +17,6 @@ This file is a short index. See:
 - **[README.md](README.md)** — installation, CLI usage, all flags,
   environment variables, output format examples. The single source of truth
   for user-facing behavior.
-- **[CHANGELOG.md](CHANGELOG.md)** — what has actually shipped, release by
-  release.
 - **[BACKLOG.md](BACKLOG.md)** — deferred work items, not yet scheduled.
 - **`docs/`** — design rationale for each subsystem, for anyone modifying
   the implementation:
@@ -44,7 +42,6 @@ ref-checker/
 ├── LICENSE                        # BSD 3-Clause, Argonne National Laboratory
 ├── README.md
 ├── PLAN.md                        # this file
-├── CHANGELOG.md
 ├── BACKLOG.md
 ├── docs/                          # design rationale, see links above
 └── ref_checker/
@@ -167,11 +164,10 @@ Scope: `openalex.py`, `crossref.py`, `osti.py`, `dblp.py`, `arxiv.py`, and
   reuse — the actual point of this change).
 - Docs: `docs/source-adapter-contract.md` gained a "Shared SourceContext"
   section; `docs/lookup-engine.md`'s concurrency section notes session
-  reuse; `CHANGELOG.md` entry added. Semantic Scholar's "drop key on 403,
-  retry unauthenticated" backlog item used exactly this: `ctx.credentials`
-  is the session-scoped "key is bad" flag, mutated in place on first 403
-  (see `CHANGELOG.md`'s "Fixed" entry for the details — landed later, on
-  branch `fix/dblp-and-s2-source-fixes`).
+  reuse. Semantic Scholar's "drop key on 403, retry unauthenticated"
+  backlog item used exactly this: `ctx.credentials` is the session-scoped
+  "key is bad" flag, mutated in place on first 403 (landed later on branch
+  `fix/dblp-and-s2-source-fixes`).
 
 ### Part 2 — extend to liveness sources (`github.py`, `url.py`) (done)
 
@@ -247,8 +243,7 @@ Landed:
 - Docs: `docs/lookup-engine.md` gained a "Threading model for
   SourceContext" subsection explaining the cookie-jar race and the
   per-thread fix; `docs/source-adapter-contract.md`'s "Shared
-  SourceContext" section updated to describe both context flavors;
-  `CHANGELOG.md` entry added.
+  SourceContext" section updated to describe both context flavors.
 
 ## Testing
 

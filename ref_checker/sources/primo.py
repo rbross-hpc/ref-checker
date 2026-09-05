@@ -32,7 +32,7 @@ from typing import Any
 
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "primo"
@@ -77,8 +77,7 @@ def build_context() -> SourceContext:
     convention as CrossRef/OSTI) if set.
     """
     mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
-    user_agent = f"ref-checker/0.1 (mailto:{mailto})" if mailto else "ref-checker/0.1"
-    return SourceContext(session=build_session(user_agent))
+    return SourceContext(session=build_session(user_agent(mailto or None)))
 
 
 def _normalize_doi(doi: str | None) -> str | None:

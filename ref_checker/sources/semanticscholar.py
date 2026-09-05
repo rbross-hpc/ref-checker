@@ -8,7 +8,7 @@ from typing import Any
 
 from ..model import QueryKind
 from ..similarity import title_ratio
-from ._http import build_session, raise_for_rate_limit
+from ._http import build_session, raise_for_rate_limit, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "semanticscholar"
@@ -17,9 +17,6 @@ SUPPORTED_QUERY_KINDS = frozenset({QueryKind.DOI, QueryKind.ARXIV_ID, QueryKind.
 
 _BASE = "https://api.semanticscholar.org/graph/v1/paper"
 _FIELDS = "title,authors,year,venue,externalIds"
-_USER_AGENT = "ref-checker/0.1"
-
-
 def build_context() -> SourceContext:
     """Build the Semantic Scholar :class:`SourceContext` once per run.
 
@@ -28,7 +25,7 @@ def build_context() -> SourceContext:
     read once here into ``credentials`` instead of per-call via the old
     ``_headers()`` helper.
     """
-    session = build_session(_USER_AGENT)
+    session = build_session(user_agent())
     api_key = os.environ.get("SEMANTICSCHOLAR_API_KEY", "")
     credentials = {"SEMANTICSCHOLAR_API_KEY": api_key} if api_key else {}
     return SourceContext(session=session, credentials=credentials)

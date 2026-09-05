@@ -60,9 +60,8 @@ is the real-world **positive** case for `_trim_post_references`'s
 page-marker-proximity check: the `Appendix` heading here genuinely starts a
 new page (`<!-- page 8 -->` precedes it by 75 characters — a running
 header), so it must still be trimmed. Used as a regression guard against
-over-correcting the mid-list false-positive bug (see `CHANGELOG.md`): the
-fix must keep trimming *this* case while no longer trimming a false
-mid-page match.
+over-correcting the mid-list false-positive bug: the fix must keep trimming
+*this* case while no longer trimming a false mid-page match.
 
 `dl.acm.org` is behind Cloudflare bot-detection and could not be fetched
 programmatically for a live test; this fixture was generated once from a

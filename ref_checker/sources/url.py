@@ -10,21 +10,18 @@ from typing import Any
 
 import requests
 
-from ._http import build_session
+from ._http import build_session, user_agent
 from .base import SourceContext
 
 SOURCE_NAME = "url"
 DEFAULT_DELAY = 1.0
-
-_USER_AGENT = "ref-checker/0.1"
-
 
 def build_context() -> SourceContext:
     """Build the URL liveness :class:`SourceContext` once per run.
 
     User-Agent only.
     """
-    return SourceContext(session=build_session(_USER_AGENT))
+    return SourceContext(session=build_session(user_agent()))
 
 
 def check_url(
